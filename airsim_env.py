@@ -1,0 +1,250 @@
+from loguru import logger
+from gym import Env
+import numpy as np
+
+from baselines_wrappers.atari_wrappers import NoopResetEnv, MaxAndSkipEnv, EpisodicLifeEnv, ClipRewardEnv
+from baselines_wrappers.wrappers import TimeLimit
+from gym.envs.registration import register
+from airsim import MultirotorClient
+import matplotlib.pyplot as plt
+import airsim
+from pytorch_wrappers import TransposeImageObs
+import time
+from PIL import Image
+import psutil
+import cv2
+from gym.spaces import Box
+from typing import TypeVar, Tuple
+from random import sample
+ActType = TypeVar("ActType")
+ObsType = TypeVar("ObsType")
+
+RESCALE_N = 2
+RANDOM_SEED = 42
+
+
+class AirSimGym_env(Env):
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
+    def __init__(self, client : MultirotorClient, env_type, vehicle_name, initial_positions, observation_as_depth, max_yaw_or_rate = 90, action_type = 'discrete'):
+        super().__init__()
+        self.observation_as_depth = observation_as_depth
+        self.client = client
+        self.action_type = action_type
+        self.env_type = env_type # outdoor or indoor - reward generation differ
+        self.vehicle_name = vehicle_name
+        self.max_yaw_or_rate = max_yaw_or_rate
+        self.is_rate = True
+        self.action_space = Box( low=-1., high=1., shape=(4,),dtype=np.float32)
+        self.noop_action = self.define_noop_action()
+        self.observation_shape = self.get_observation().shape #logger.info(f'self.observation_shape = {self.observation_shape}') # (360, 640, 3)
+
+        self.observation_space = Box(
+            low=0., high=1., shape=self.observation_shape, dtype=np.float32 # 3 channels
+        )
+        self.height_airsim_restart_positions = [-4.35,-5.4, -6.5,-7.6,-8.5, -9. ]
+        self.reward_range = None
+        self.initial_positions = initial_positions #self.client.simGetVehiclePose(vehicle_name=self.vehicle_name)
+
+    def step_discrete(self, action):
+        raise NotImplementedError("compute_reward_indoor Not Implemented")
+
+    def step_continuous(self, action):
+        """
+                :param action: array with 4 floats from -1 to 1 : x,y,z velocities and yaw_or_rate
+                :return:
+                """
+        if type(action) == int and action == self.noop_action:
+            pass
+        else:
+            vx, vy, vz, yaw_or_rate = action
+            yaw_or_rate = (yaw_or_rate) * self.max_yaw_or_rate
+            start = time.time()
+            self.client.moveByVelocityAsync(vx=float(vx), vy=float(vy), vz=float(vz), duration=1,
+                                            drivetrain=airsim.DrivetrainType.MaxDegreeOfFreedom,
+                                            yaw_mode=airsim.YawMode(is_rate=self.is_rate,
+                                                                    yaw_or_rate=float(yaw_or_rate)),
+                                            vehicle_name=self.vehicle_name).join()
+            dt = time.time() - start
+            logger.info(f'\n\ndt in step  = {dt}')
+            for i in range(3):
+                logger.info(f'\n*{i} in step **\n{self._get_info(get_kinematic=True)}')
+                time.sleep(0.1)
+            # do one step in environment that corresponds to action
+        observation = self.get_observation()  #
+
+        reward, done = self.compute_reward()  # TODO - define rewarn calculation function
+        info = self._get_info()
+        return observation, reward, done, info
+
+    def step(self, action):
+        if self.action_type == 'discrete':
+            return self.step_discrete(action)
+
+        elif self.action_type == 'continuous':
+            return self.step_continuous(action)
+        else:
+            raise KeyError(f"self.action_type = {self.action_type} is invalid. discrete or continuous are available =)")
+
+
+    def compute_reward_outdoor(self):
+
+        logger.info(f'self.client.simGetGroundTruthKinematics()= \n{self.client.simGetGroundTruthKinematics()}')
+        raise NotImplementedError("compute_reward_indoor Not Implemented")
+
+        #return 0.001
+
+    def compute_reward_indoor(self):
+        raise NotImplementedError("compute_reward_indoor Not Implemented")
+    def compute_reward(self):
+        if_collision = self.client.simGetCollisionInfo(vehicle_name=self.vehicle_name).has_collided
+        if self.env_type == 'outdoor':
+            return self.compute_reward_outdoor(), bool(if_collision)
+        elif self.env_type == 'indoor':
+            return self.compute_reward_indoor(), bool(if_collision)
+        else:
+            raise KeyError(f"self.env_type = {self.env_type} is invalid. indoor or outdoor are available =)")
+
+
+    def reset(self, seed=None, options=None, level = 0):
+        if seed is None:
+            np.random.seed(RANDOM_SEED)
+            self.np_random = np.random.default_rng()
+        reset_height = [*sample(self.height_airsim_restart_positions, 1)][0]
+        # select random pose from inital posinion and generate z
+        x, y, angle = [*sample(self.initial_positions, 1)][0]
+        reset_pos = airsim.Pose(airsim.Vector3r(x, y, reset_height),
+                               airsim.to_quaternion(0, 0, (angle)*(sample([+1, -1], 1)[0])*np.pi/180))
+
+        self.client.simSetVehiclePose( reset_pos, ignore_collison=True, vehicle_name=self.vehicle_name)
+        logger.info('in reset')
+        for i in range(3):
+            logger.info(f'\n* {i} **\n{self._get_info(get_kinematic=True)}')
+            time.sleep(0.1)
+        time.sleep(2)
+        observation = self.get_observation()
+        # info = self._get_info()
+        return observation #, info
+
+    def _get_info(self, get_kinematic = False):
+
+        if get_kinematic : return self.client.simGetGroundTruthKinematics()
+        else : return {}
+
+
+    def get_raw_observ(self, depth = True):
+        """
+        AirSim observation : image from fpv-camera of drone
+        :return:
+        """
+        if depth: observation = get_DepthImageRGB(self.client, self.vehicle_name, self.env_type)
+        else : observation = get_MonocularImageRGB(self.client, self.vehicle_name)
+        return observation
+
+    def get_observation(self, rescale_n = RESCALE_N):
+
+        raw_observation = self.get_raw_observ(depth = self.observation_as_depth)
+        if self.observation_as_depth:
+            cmap = plt.get_cmap('jet')
+            depth_map_heat = cmap(raw_observation)[:, :, :3] # already normalized from 0 to 1
+            image_scaled = cv2.resize(depth_map_heat,
+                                            (depth_map_heat.shape[1] * RESCALE_N, depth_map_heat.shape[0] * RESCALE_N))
+        else:
+            mono_image = raw_observation # already normalized from 0 to 1
+            image_scaled = cv2.resize(mono_image,
+                                            (mono_image.shape[1] * RESCALE_N, mono_image.shape[0] * RESCALE_N))
+
+        return image_scaled
+
+    def define_noop_action(self):
+        return 0
+
+    def render(self):
+        """
+        check 'debug' mode in PEDRA 2-0 -> how it rendered
+        :return:
+        """
+        pass
+
+    def close(self, env_process):
+        close_env(env_process)
+
+
+def close_env(env_process):
+    process = psutil.Process(env_process.pid)
+    for proc in process.children(recursive=True):
+        proc.kill()
+    process.kill()
+    logger.info("Environment closed")
+
+
+def get_DepthImageRGB(client, vehicle_name, env_type):
+    camera_name = 1
+    if env_type == 'indoor':
+        max_tries = 3
+        tries = 0
+        correct = False
+        while not correct and tries < max_tries: # TODO - chech how it will work for indoor environment
+            tries += 1
+            responses = client.simGetImages(
+                [airsim.ImageRequest(camera_name, airsim.ImageType.DepthVis, False, False)],
+                vehicle_name=vehicle_name)[0]
+            img1d = np.fromstring(responses.image_data_uint8, dtype=np.uint8)
+            # AirSim bug: Sometimes it returns invalid depth map with a few 255 and all 0s
+            if np.max(img1d) == 255 and np.mean(img1d) < 0.05:
+                correct = False
+            else:
+                correct = True
+
+        depth = img1d.reshape(responses.height, responses.width, 3)[:, :, 0]
+    elif env_type == 'outdoor':
+        responses = client.simGetImages([airsim.ImageRequest(camera_name, airsim.ImageType.DepthVis, True)],
+                                             vehicle_name=vehicle_name)[0]
+        depth = airsim.list_to_2d_float_array(responses.image_data_float, responses.width, responses.height)
+
+    return depth
+
+def get_MonocularImageRGB(client, vehicle_name):
+
+    responses1 = client.simGetImages([
+        airsim.ImageRequest('front_center', airsim.ImageType.Scene, False,
+                            False)], vehicle_name=vehicle_name)  # scene vision image in uncompressed RGBA array
+
+    response = responses1[0]
+    img1d = np.fromstring(response.image_data_uint8 , dtype=np.uint8)  # get numpy array / image_data_uint8
+    img_rgba = img1d.reshape(response.height, response.width, 3)
+    img = Image.fromarray(img_rgba)
+    img_rgb = img.convert('RGB')
+    camera_image_rgb = np.asarray(img_rgb)
+    camera_image = camera_image_rgb / 255
+
+    return camera_image
+
+def make_airsim_deepmind(airsim_env_class, max_episode_steps=None, scale_values=False, clip_rewards=False, render_mode="human", skip=2):
+    env = airsim_env_class # gym.make(env_id, new_step_api =False , render_mode=render_mode) # apply_api_compatibility=False
+    # env = NoopResetEnv(env, noop_max=30) # We already set random initialisation in .reset()
+    env = MaxAndSkipEnv(env, skip=skip) # TODO - WTF
+
+    if max_episode_steps is not None:
+        env = TimeLimit(env, max_episode_steps=max_episode_steps)
+
+    # env = EpisodicLifeEnv(env)
+
+    #env = WarpFrame(env)
+
+    # if scale_values:
+    #     env = ScaledFloatFrame(env)
+
+    # TODO - define if clip reward or not and how
+    if clip_rewards:
+        env = ClipRewardEnv(env)
+
+    env = TransposeImageObs(env, axis_order=[2, 0, 1])  # Convert to torch order (C, H, W)
+    return env
+
+
+
+register(
+    id='AirSimGym_env-v0',
+    entry_point='gym.envs.box2d:AirSim_0',
+    max_episode_steps=10000,
+)
