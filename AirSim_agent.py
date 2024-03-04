@@ -48,10 +48,6 @@ def connect_drone(ip_address='127.0.0.5', num_agents=1, client=[]):
         client.takeoffAsync(vehicle_name=name_agent).join()
         time.sleep(0.1)
         old_posit[name_agent] = client.simGetVehiclePose(vehicle_name=name_agent)
-
-
-
-
     return client
 
 def try_reset_AirsimGymEnv():
@@ -135,27 +131,44 @@ def try_step_batched_AirsimGymEnv():
     env_process = start_environment(exe_path)
     client = connect_drone()  # first takeoff
 
-    env_airsim = AirSimGym_env(client, env_type='outdoor', vehicle_name='drone0',
+    env_airsim = AirSimGym_env(client, env_type='outdoor', vehicle_name='drone0', action_type= 'discrete',
                         initial_positions=restart_positions, observation_as_depth = True)
     make_env = lambda: Monitor(make_airsim_deepmind(env_airsim, render_mode='rgb_array', scale_values=True),
                                allow_early_resets=True)
     # set batched environment
     vec_env = DummyVecEnv([make_env for _ in range(NUM_ENVS)])
     env = BatchedPytorchFrameStack(vec_env, k=2) # TODO - WTF
-    env.reset()
+    observation = env.reset()
+    visualize_observation(observation)
+    act = 1
     logger.info(f'done reset() \nstart doing .step() ')
     time.sleep(2)
-    observation, reward, done, info = env.step(actions=np.asarray([1, 1, 0, -1], dtype=np.float32))
+    observation, reward, done, info = env.step(actions=4)
     visualize_observation(observation)
-    time.sleep(2)
-    observation, reward, done, info = env.step(actions=np.asarray([1, -1, 0, -5], dtype=np.float32))
+    time.sleep(1)
+    observation, reward, done, info = env.step(actions=4)
     visualize_observation(observation)
-    time.sleep(2)
-    observation, reward, done, info = env.step(actions=np.asarray([1, 1, 1, -2], dtype=np.float32))
-    time.sleep(2)
-    logger.info(f'done step() \nstart doing .step() ')
-    time.sleep(2)
+    time.sleep(1)
+    observation, reward, done, info = env.step(actions=5)
     visualize_observation(observation)
+    time.sleep(1)
+    observation, reward, done, info = env.step(actions=5)
+    visualize_observation(observation)
+    time.sleep(1)
+
+
+    # time.sleep(2)
+    # observation, reward, done, info = env.step(actions=np.asarray([1, 1, 0, -1], dtype=np.float32))
+    # visualize_observation(observation)
+    # time.sleep(2)
+    # observation, reward, done, info = env.step(actions=np.asarray([1, -1, 0, -5], dtype=np.float32))
+    # visualize_observation(observation)
+    # time.sleep(2)
+    # observation, reward, done, info = env.step(actions=np.asarray([1, 1, 1, -2], dtype=np.float32))
+    # time.sleep(2)
+    # logger.info(f'done step() \nstart doing .step() ')
+    # time.sleep(2)
+
 
 
 
