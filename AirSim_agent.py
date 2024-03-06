@@ -54,12 +54,12 @@ def try_reset_AirsimGymEnv():
     exe_path = "./unreal_envs/outdoor_courtyard/outdoor_courtyard.exe"
     cfg = read_cfg(config_filename='./configs/config.cfg', verbose=False)
     cfg.num_agents = 1
-    restart_positions, airsim_positions_raw, crash_threshold = get_airsim_position(name='outdoor_courtyard')
+    restart_positions, airsim_positions_raw, done_xy = get_airsim_position(name='outdoor_courtyard')
     generate_json(cfg, initial_positions=airsim_positions_raw)
     env_process = start_environment(exe_path)
     client, _, initial_position = connect_drone()  # first takeoff
     env = AirSimGym_env(client, env_type='outdoor', vehicle_name='drone0',
-                               initial_positions=restart_positions)
+                               initial_positions=restart_positions, done_xy=done_xy)
 
 
     logger.info(f'try reset with another initial position')
@@ -92,12 +92,12 @@ def try_gym_make_batched_AirsimGymEnv():
 
     cfg = read_cfg(config_filename='./configs/config.cfg', verbose=False)
     cfg.num_agents = 1
-    restart_positions, airsim_positions_raw, crash_threshold = get_airsim_position(name='outdoor_courtyard')
+    restart_positions, airsim_positions_raw,done_xy = get_airsim_position(name='outdoor_courtyard')
     generate_json(cfg, initial_positions=airsim_positions_raw)
     env_process = start_environment(exe_path)
     client, _, initial_position = connect_drone()  # first takeoff
     env_airsim = AirSimGym_env(client, env_type='outdoor', vehicle_name='drone0',
-                        initial_positions=restart_positions, observation_as_depth = False)
+                        initial_positions=restart_positions, observation_as_depth = False,done_xy=done_xy)
 
     make_env = lambda: Monitor(make_airsim_deepmind(env_airsim, render_mode='rgb_array', scale_values=True),
                                allow_early_resets=True)
@@ -126,13 +126,13 @@ def try_step_batched_AirsimGymEnv():
     exe_path = "./unreal_envs/outdoor_courtyard/outdoor_courtyard.exe"
     cfg = read_cfg(config_filename='./configs/config.cfg', verbose=False)
     cfg.num_agents = 1
-    restart_positions, airsim_positions_raw, crash_threshold = get_airsim_position(name='outdoor_courtyard')
+    restart_positions, airsim_positions_raw ,done_xy = get_airsim_position(name='outdoor_courtyard')
     generate_json(cfg, initial_positions=airsim_positions_raw)
     env_process = start_environment(exe_path)
     client = connect_drone()  # first takeoff
 
     env_airsim = AirSimGym_env(client, env_type='outdoor', vehicle_name='drone0', action_type= 'discrete',
-                        initial_positions=restart_positions, observation_as_depth = True)
+                        initial_positions=restart_positions, observation_as_depth = True,done_xy=done_xy)
     make_env = lambda: Monitor(make_airsim_deepmind(env_airsim, render_mode='rgb_array', scale_values=True),
                                allow_early_resets=True)
     # set batched environment
@@ -140,19 +140,22 @@ def try_step_batched_AirsimGymEnv():
     env = BatchedPytorchFrameStack(vec_env, k=2) # TODO - WTF
     observation = env.reset()
     visualize_observation(observation)
-    act = 1
     logger.info(f'done reset() \nstart doing .step() ')
     time.sleep(2)
-    observation, reward, done, info = env.step(actions=4)
+    observation, reward, done, info = env.step(actions=1)
+    logger.info(f'reward = {reward}')
     visualize_observation(observation)
     time.sleep(1)
-    observation, reward, done, info = env.step(actions=4)
+    observation, reward, done, info = env.step(actions=1)
+    logger.info(f'reward = {reward}')
     visualize_observation(observation)
     time.sleep(1)
-    observation, reward, done, info = env.step(actions=5)
+    observation, reward, done, info = env.step(actions=2)
+    logger.info(f'reward = {reward}')
     visualize_observation(observation)
     time.sleep(1)
-    observation, reward, done, info = env.step(actions=5)
+    observation, reward, done, info = env.step(actions=2)
+    logger.info(f'reward = {reward}')
     visualize_observation(observation)
     time.sleep(1)
 

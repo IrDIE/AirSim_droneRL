@@ -1,7 +1,8 @@
 from loguru import logger
 from gym import Env
 import numpy as np
-
+import math
+from airsim.utils import to_eularian_angles
 from baselines_wrappers.atari_wrappers import NoopResetEnv, MaxAndSkipEnv, EpisodicLifeEnv, ClipRewardEnv
 from baselines_wrappers.wrappers import TimeLimit
 from gym.envs.registration import register
@@ -25,16 +26,20 @@ RANDOM_SEED = 42
 
 class AirSimGym_env(Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
-    def __init__(self, client : MultirotorClient, env_type, vehicle_name, initial_positions, observation_as_depth, max_yaw_or_rate = 90, action_type = 'discrete'):
+    def __init__(self, client : MultirotorClient, env_type, vehicle_name, initial_positions, observation_as_depth,done_xy=None, max_yaw_or_rate = 90, action_type = 'discrete'):
         super().__init__()
         self.observation_as_depth = observation_as_depth
         self.client = client
-        self.action_type = action_type
+        self.action_type = action_type # 'continuous' or 'discrete'
         self.env_type = env_type # outdoor or indoor - reward generation differ
         self.vehicle_name = vehicle_name
         self.max_yaw_or_rate = max_yaw_or_rate
         self.is_rate = True
-        self.action_space = Box( low=-1., high=1., shape=(4,),dtype=np.float32)
+        self.done_xy = done_xy
+        if action_type == 'continuous':
+            self.action_space = Box( low=-1., high=1., shape=(4,),dtype=np.float32)
+        else:
+            self.action_space = Box(low=0, high=4, shape=(1,), dtype=int)
         self.noop_action = self.define_noop_action()
         self.observation_shape = self.get_observation().shape #logger.info(f'self.observation_shape = {self.observation_shape}') # (360, 640, 3)
 
@@ -46,7 +51,73 @@ class AirSimGym_env(Env):
         self.initial_positions = initial_positions #self.client.simGetVehiclePose(vehicle_name=self.vehicle_name)
 
     def step_discrete(self, action):
-        raise NotImplementedError("compute_reward_indoor Not Implemented")
+        if type(action) == int and action == self.noop_action: # == if action == 0: pass
+            pass
+        # forward
+        if action == 1: self.move_forward()
+
+        # rotate left
+        if action == 2: self.rotate_left()
+
+        # rotate right
+        if action == 3: self.rotate_right()
+
+        # up
+        if action == 4: self.move_up()
+
+        # down
+        if action == 5: self.move_down()
+
+        observation = self.get_observation()
+        reward, done = self.compute_reward()  # TODO - define rewarn calculation function
+        info = self._get_info()
+        return observation, reward, done, info
+
+    # <------------------------
+    def get_yaw(self):
+        quaternions = self.client.getMultirotorState().kinematics_estimated.orientation
+        a, b, yaw_rad = to_eularian_angles(quaternions)
+        yaw_deg = math.degrees(yaw_rad)
+        return yaw_deg, yaw_rad
+
+    def move_forward(self):
+
+        yaw_deg, yaw_rad = self.get_yaw()
+        # need rad
+        vx = math.cos(yaw_rad) * 0.05
+        vy = math.sin(yaw_rad) * 0.05
+        self.client.moveByVelocityAsync(vx , vy , 0, 1, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False)).join()
+        time.sleep(0.01)
+
+    def rotate_left(self):
+        yaw_deg, yaw_rad = self.get_yaw()
+        z = self.client.simGetGroundTruthKinematics().position.z_val
+        yaw_rad -= math.radians(10)
+        self.client.moveByAngleZAsync(0,0,z,yaw_rad,1).join()
+        time.sleep(0.01)
+
+    def rotate_right(self):
+        yaw_deg, yaw_rad = self.get_yaw()
+        yaw_rad += math.radians(10)
+        z = self.client.simGetGroundTruthKinematics().position.z_val
+        self.client.moveByAngleZAsync(0,0,z,yaw_rad,1).join()
+        time.sleep(0.01)
+
+    def move_up(self):
+        linear_velocity = self.client.simGetGroundTruthKinematics().linear_velocity
+        x,y, z = linear_velocity.x_val, linear_velocity.y_val, linear_velocity.z_val
+        z -= 0.007
+        self.client.moveByVelocityAsync(x, y, z, 1, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False)).join()
+        time.sleep(0.01)
+    def move_down(self):
+        linear_velocity = self.client.simGetGroundTruthKinematics().linear_velocity
+        x, y, z = linear_velocity.x_val, linear_velocity.y_val, linear_velocity.z_val
+        z += 0.007
+        self.client.moveByVelocityAsync(x, y, z , 1, airsim.DrivetrainType.ForwardOnly,
+                                        airsim.YawMode(False)).join()
+        time.sleep(0.01)
+
+    # <---------
 
     def step_continuous(self, action):
         """
@@ -64,14 +135,12 @@ class AirSimGym_env(Env):
                                             yaw_mode=airsim.YawMode(is_rate=self.is_rate,
                                                                     yaw_or_rate=float(yaw_or_rate)),
                                             vehicle_name=self.vehicle_name).join()
-            dt = time.time() - start
-            logger.info(f'\n\ndt in step  = {dt}')
-            for i in range(3):
-                logger.info(f'\n*{i} in step **\n{self._get_info(get_kinematic=True)}')
-                time.sleep(0.1)
-            # do one step in environment that corresponds to action
-        observation = self.get_observation()  #
 
+            # for i in range(3):
+            #     logger.info(f'\n*{i} in step **\n{self._get_info(get_kinematic=True)}')
+            #     time.sleep(0.1)
+            # do one step in environment that corresponds to action
+        observation = self.get_observation()
         reward, done = self.compute_reward()  # TODO - define rewarn calculation function
         info = self._get_info()
         return observation, reward, done, info
@@ -87,22 +156,47 @@ class AirSimGym_env(Env):
 
 
     def compute_reward_outdoor(self):
+        #raise NotImplementedError("compute_reward_indoor Not Implemented")
+        position = self.client.simGetVehiclePose().position
+        x_current, y_current = position.x_val, position.y_val
+        x_start, y_start = self.start_point
+        x_delta , y_delta = (x_start - x_current), (y_start-y_current)
+        distance = math.sqrt((x_delta*x_delta) + (y_delta*y_delta))
+        # logger.info(f'distance = {distance}')
+        # calculate % of max possible
+        reward = distance / self.max_distance_xy
+        return reward
 
-        logger.info(f'self.client.simGetGroundTruthKinematics()= \n{self.client.simGetGroundTruthKinematics()}')
-        raise NotImplementedError("compute_reward_indoor Not Implemented")
+    def check_if_out_of_env(self):
+        position = self.client.simGetVehiclePose().position
+        x_current, y_current = position.x_val, position.y_val
+        min_x, max_x = self.done_xy[0]
+        min_y, max_y= self.done_xy[1]
+        if x_current > max_x or x_current < min_x or y_current > max_y or y_current < min_y:
+            return True # out of environment defined in unreale4
+        else:
+            return False
 
-        #return 0.001
 
     def compute_reward_indoor(self):
         raise NotImplementedError("compute_reward_indoor Not Implemented")
     def compute_reward(self):
         if_collision = self.client.simGetCollisionInfo(vehicle_name=self.vehicle_name).has_collided
-        if self.env_type == 'outdoor':
-            return self.compute_reward_outdoor(), bool(if_collision)
-        elif self.env_type == 'indoor':
-            return self.compute_reward_indoor(), bool(if_collision)
+        far_away = False
+        if self.done_xy is not None:
+            far_away = self.check_if_out_of_env()
+        if if_collision:
+            reward = -10
+            done = True
+            return reward, done
         else:
-            raise KeyError(f"self.env_type = {self.env_type} is invalid. indoor or outdoor are available =)")
+            done = False if not far_away else True
+            if self.env_type == 'outdoor':
+                return self.compute_reward_outdoor(), done
+            elif self.env_type == 'indoor':
+                return self.compute_reward_indoor(), done
+            else:
+                raise KeyError(f"self.env_type = {self.env_type} is invalid. indoor or outdoor are available =)")
 
 
     def reset(self, seed=None, options=None, level = 0):
@@ -112,15 +206,21 @@ class AirSimGym_env(Env):
         reset_height = [*sample(self.height_airsim_restart_positions, 1)][0]
         # select random pose from inital posinion and generate z
         x, y, angle = [*sample(self.initial_positions, 1)][0]
+        if self.env_type == 'outdoor':
+            self.start_point = (x,y)
+            min_x, max_x = self.done_xy[0]
+            min_y, max_y = self.done_xy[1]
+
+            x_max_possible = max(abs( min_x - x), abs(max_x-x)) # x_max_possible distance from strart point
+            y_max_possible = max(abs(min_y - y), abs(max_y - y))  # y_max_possible distance from strart point
+            self.max_distance_xy = math.sqrt((x_max_possible*x_max_possible) + (y_max_possible*y_max_possible))
+            # logger.info(f'self.max_distance_xy = {self.max_distance_xy}')
         reset_pos = airsim.Pose(airsim.Vector3r(x, y, reset_height),
                                airsim.to_quaternion(0, 0, (angle)*(sample([+1, -1], 1)[0])*np.pi/180))
 
         self.client.simSetVehiclePose( reset_pos, ignore_collison=True, vehicle_name=self.vehicle_name)
         logger.info('in reset')
-        for i in range(3):
-            logger.info(f'\n* {i} **\n{self._get_info(get_kinematic=True)}')
-            time.sleep(0.1)
-        time.sleep(2)
+        time.sleep(0.2)
         observation = self.get_observation()
         # info = self._get_info()
         return observation #, info
