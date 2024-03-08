@@ -10,7 +10,7 @@ from gym.envs.registration import register
 from airsim import MultirotorClient
 import matplotlib.pyplot as plt
 import airsim
-from pytorch_wrappers import TransposeImageObs
+from utils.pytorch_wrappers import TransposeImageObs
 import time
 from PIL import Image
 import psutil

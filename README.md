@@ -17,3 +17,6 @@ This repo contains several training alghorithms for trainig drone avoid obstackl
 
 
 </details>
+
+
+AirSim environment are wrapped in Gym environment (check `airsim_env.py`) so we can interact with it jist like with any Gym environment.

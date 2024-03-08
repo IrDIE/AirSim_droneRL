@@ -1,5 +1,9 @@
 from torch import nn
-
+import itertools
+import random
+from torch.optim import Adam
+from torch.utils.tensorboard import SummaryWriter
+from collections import deque
 import warnings
 import numpy as np
 import torch
@@ -7,8 +11,9 @@ import time
 import os
 from loguru import logger
 from utils.loss import smooth_l1_loss
-from pytorch_wrappers import PytorchLazyFrames
+from utils.pytorch_wrappers import PytorchLazyFrames
 warnings.filterwarnings('ignore')
+
 
 GAMMA = 0.99 # DISCOUNT RATE
 BATCH_SIZE = 2 #32 # FROM REPLAY BUFFER
@@ -25,6 +30,10 @@ TARGET_UPDATE_FREQ = 1000 // NUM_ENVS
 SAVE_PATH, SAVE_INTERVAL = "./saved_weights/", 5 # 300
 
 LOGGING_INTERVAL = 5
+LOGGING_DIR = f"logs/dqn/{time.time()}"
+
+
+RESTART_EXE = 300 # looks like airsim api with started .exe can`t last forever =) , so need to restart
 
 class DQN(nn.Module):
     def __init__(self, env):
@@ -100,16 +109,13 @@ class DQN(nn.Module):
 
         target_q_values = target_net(new_states)
         max_target_q_values = target_q_values.max(dim=1, keepdim=True)[0]
-
         targets = rews + GAMMA * (1 - dones) * max_target_q_values
         # loss
         q_values = self(states)
         action_q_values = torch.gather(q_values, dim=1, index=actions)
-
         loss = smooth_l1_loss(action_q_values, targets)
 
         return loss
-
 
     def save_best_last(self, best = True):
         if best :
@@ -122,4 +128,83 @@ class DQN(nn.Module):
         self.convNet.load_state_dict(torch.load(weights_path))
 
 
+
+def training_dqn(env):
+    replay_buffer = deque(maxlen=BUFFER_SIZE)
+    info_buffer = deque(maxlen=100)
+    online_net = DQN(env=env)
+    target_net = DQN(env=env)
+    target_net.load_state_dict(online_net.state_dict())
+    optimizer = Adam(lr=LR, params=online_net.parameters())
+    tb_summary = SummaryWriter(LOGGING_DIR)
+
+    episode_count = 0
+
+    # init replay buffer before training
+    states = env.reset()
+    for _ in range(MIN_REPLAY_SIZE):
+        actions = [env.action_space.sample() for _ in range(NUM_ENVS)]  # sample from env randomly
+        new_states, rewards, dones, _ = env.step(actions)
+
+        for state, action, reward, done, new_state in zip(states, actions, rewards, dones, new_states):
+            transition = (state, action, reward, done, new_state)
+            replay_buffer.append(transition)
+        states = new_states
+
+    # main training loop
+    states = env.reset()
+
+    last_rew = -10.
+    for step in itertools.count():
+        # select action
+        epsilon = np.interp(step * NUM_ENVS, [0, EPSILON_DECAY], [EPSILON_START, EPSILON_END])
+        if isinstance(states[0], PytorchLazyFrames):
+            states_ = np.stack([lasy.get_frames() for lasy in states])
+            actions = online_net.action(states_, epsilon)
+        else:
+            actions = online_net.action(states, epsilon)  # epsilon - random policy now inside .action
+
+        # take action
+
+        new_states, rewards, dones, infos = env.step(actions)
+
+        for state, action, reward, done, new_state, info in zip(states, actions, rewards, dones, new_states, infos):
+            transition = (state, action, reward, done, new_state)
+            replay_buffer.append(transition)
+
+            if done:
+                info_buffer.append(info['episode'])
+                episode_count += 1
+
+        states = new_states
+
+        transition_sample = random.sample(replay_buffer, BATCH_SIZE)
+        loss = online_net.compute_loss(target_net, transition_sample)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        if step % TARGET_UPDATE_FREQ:
+            target_net.load_state_dict(online_net.state_dict())
+
+        if step % LOGGING_INTERVAL == 0:
+            mean_rew = np.mean([e['r'] for e in info_buffer]) or 0
+            if mean_rew > last_rew:
+                logger.info(f"\n*****\nCkeckpoint for best model with reward = {mean_rew} at step {step}. Saving model weights....")
+                online_net.save_best_last(best=True)
+            logger.info(
+                f"\nCkeckpoint for last model with reward = {mean_rew} at step {step}. Saving model weights....")
+            online_net.save_best_last(best=False)
+
+            last_rew = mean_rew
+            mean_duration = np.mean([e['l'] for e in info_buffer]) or 0
+            logger.info(f'Episode: {step}\nReward  == {mean_rew}\nDuration == {mean_duration}')
+
+            tb_summary.add_scalar('mean_rew', mean_rew if mean_rew is not None else 0, global_step=step)
+            tb_summary.add_scalar('mean_duration', mean_duration if mean_duration is not None else 0, global_step=step)
+            tb_summary.add_scalar('episode_count', episode_count, global_step=step)
+
+            if step > RESTART_EXE:
+                logger.info(f'Episode: {step}\nRestart .exe')
+                return -1
 
