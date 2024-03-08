@@ -20,3 +20,15 @@ This repo contains several training alghorithms for trainig drone avoid obstackl
 
 
 AirSim environment are wrapped in Gym environment (check `airsim_env.py`) so we can interact with it jist like with any Gym environment.
+
+* To launch environment you should have .exe file with rendered UnrealEngine environment (and UE4 installed as well). 
+  * You can find zipped .exe environments here - https://github.com/microsoft/AirSim/releases
+  * Also setup instruction to make AirSim API work can be found in official AirSim repo
+
+<details>
+  <summary>Why use AirSim?</summary>
+  <img src="https://github.com/IrDIE/AirSim_droneRL/blob/main/readme_pictures/why_airsim.png" width="705" height="408"/>  
+  source - https://imrclab.github.io/workshop-uav-sims-icra2023/papers/RS4UAVs_paper_10.pdf
+
+
+</details>
