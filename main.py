@@ -78,7 +78,7 @@ def inference_setup(env):
             env.reset()
 
 
-def try_train_outroor_DQN():
+def train_outroor_DQN():
     env, env_process = connect_exe_env(exe_path="./unreal_envs/outdoor_courtyard/outdoor_courtyard.exe")
     res = training_dqn(env)
     #inference_setup(env)
@@ -91,7 +91,7 @@ def main():
     for epoch in range(3):
         global LOGGING_DIR
         LOGGING_DIR = f"logs/dqn/{time.time()}"
-        try_train_outroor_DQN()
+        train_outroor_DQN()
 
 
 if __name__ == "__main__":

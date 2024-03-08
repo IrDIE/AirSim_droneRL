@@ -26,12 +26,23 @@ AirSim environment are wrapped in Gym environment (check `airsim_env.py`) so we 
 
 <details>
   <summary>Why use AirSim?</summary>
+
+
   AirSim have ArduPilot and ROS support - what can be very helpful if you gonna do inference in real-world
 
   <img src="https://github.com/IrDIE/AirSim_droneRL/blob/main/readme_pictures/why_airsim.png" width="705" height="408"/>  
+  
+
   source - https://imrclab.github.io/workshop-uav-sims-icra2023/papers/RS4UAVs_paper_10.pdf
 
 
 </details>
 
+### How use this repo?
+ 1. ```git clone ```
+2. Download and unzip environment -
+2. Currently available only DQN algorithm (for **outdoor_courtyard** environment with discrete action space)
+   * All logic for reward calculation, reset, step are in `airsim_env.pt`
+4. . Check out `agents.dqn.py` file, set your hyperparameters. 
+3. Go to `main.py` and run `train_outroor_DQN` function
 
