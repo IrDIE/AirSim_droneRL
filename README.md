@@ -40,6 +40,8 @@ AirSim environment are wrapped in Gym environment (check `airsim_env.py`) so we 
 
 ### How use this repo?
  1. ```git clone ```
+2. Install UE4 for AirSim ( all setup can be found here https://github.com/microsoft/AirSim )
+2. ```pip install requirements.txt``` 
 2. Download and unzip environment -
 2. Currently available only DQN algorithm (for **outdoor_courtyard** environment with discrete action space)
    * All logic for reward calculation, reset, step are in `airsim_env.pt`
