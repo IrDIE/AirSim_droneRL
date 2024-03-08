@@ -4,14 +4,21 @@ This repo contains several training alghorithms for trainig drone avoid obstackl
 
 <details>
   <summary>What is AirSim?</summary>
-  
+  official repo : 
 
   https://github.com/microsoft/AirSim
 
-  Spoiler text. Note that it's important to have a space after the summary tag. You should be able to write any markdown you want inside the `<details>` tag... just make sure you close `<details>` afterward.
+  AirSim good at simulation of drone physic and render of environment good enough:
+
   
-  ```javascript
-  console.log("I'm a code block!");
-  ```
+
+  <img src="https://github.com/IrDIE/AirSim_droneRL/blob/main/readme_pictures/airsim_drone_.gif" width="80" height="80"/>
+
+  ![](https://github.com/IrDIE/AirSim_droneRL/blob/main/readme_pictures/airsim_drone_.gif)
+
   
+
+  | <img src="https://media.giphy.com/media/vFKqnCdLPNOKc/giphy.gif" width="80" height="80"/> | most important - AirSim have nice API :heart: |
+|---|-----------------------------------------------|
+
 </details>
