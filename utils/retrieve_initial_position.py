@@ -37,6 +37,7 @@ def onclick(event):
     return coords
 
 
+
 root = Tk()
 filename =filedialog.askopenfilename(initialdir = "/",title = "Select file",filetypes = (("PNG files","*.PNG"),("png files","*.png"),("All files","*.*"))   )
 root.destroy()

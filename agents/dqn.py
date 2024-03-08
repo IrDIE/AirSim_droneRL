@@ -6,7 +6,7 @@ import torch
 import time
 import os
 from loguru import logger
-from loss import smooth_l1_loss
+from utils.loss import smooth_l1_loss
 from pytorch_wrappers import PytorchLazyFrames
 warnings.filterwarnings('ignore')
 

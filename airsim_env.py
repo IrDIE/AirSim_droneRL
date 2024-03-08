@@ -1,9 +1,10 @@
 from loguru import logger
 from gym import Env
+from gym.spaces import Discrete
 import numpy as np
 import math
 from airsim.utils import to_eularian_angles
-from baselines_wrappers.atari_wrappers import NoopResetEnv, MaxAndSkipEnv, EpisodicLifeEnv, ClipRewardEnv
+from baselines_wrappers.atari_wrappers import MaxAndSkipEnv, ClipRewardEnv
 from baselines_wrappers.wrappers import TimeLimit
 from gym.envs.registration import register
 from airsim import MultirotorClient
@@ -15,7 +16,7 @@ from PIL import Image
 import psutil
 import cv2
 from gym.spaces import Box
-from typing import TypeVar, Tuple
+from typing import TypeVar
 from random import sample
 ActType = TypeVar("ActType")
 ObsType = TypeVar("ObsType")
@@ -39,7 +40,8 @@ class AirSimGym_env(Env):
         if action_type == 'continuous':
             self.action_space = Box( low=-1., high=1., shape=(4,),dtype=np.float32)
         else:
-            self.action_space = Box(low=0, high=4, shape=(1,), dtype=int)
+            self.action_space = Discrete(6) #[0,1,2,3,4,5]
+
         self.noop_action = self.define_noop_action()
         self.observation_shape = self.get_observation().shape #logger.info(f'self.observation_shape = {self.observation_shape}') # (360, 640, 3)
 
@@ -157,19 +159,27 @@ class AirSimGym_env(Env):
 
     def compute_reward_outdoor(self):
         #raise NotImplementedError("compute_reward_indoor Not Implemented")
-        position = self.client.simGetVehiclePose().position
+        kinematic = self.client.simGetGroundTruthKinematics()
+        # logger.info(f'lin velocity = {kinematic.linear_velocity}')
+        velocity = kinematic.linear_velocity
+        x_velocity, y_velocity = velocity.x_val, velocity.y_val
+        velocity = math.sqrt((x_velocity*x_velocity) + (y_velocity*y_velocity))
+        position = kinematic.position
+
         x_current, y_current = position.x_val, position.y_val
         x_start, y_start = self.start_point
         x_delta , y_delta = (x_start - x_current), (y_start-y_current)
         distance = math.sqrt((x_delta*x_delta) + (y_delta*y_delta))
         # logger.info(f'distance = {distance}')
         # calculate % of max possible
-        reward = distance / self.max_distance_xy
+        reward = distance * velocity / self.max_distance_xy
         return reward
 
     def check_if_out_of_env(self):
         position = self.client.simGetVehiclePose().position
-        x_current, y_current = position.x_val, position.y_val
+        x_current, y_current , z_current= position.x_val, position.y_val, position.z_val
+        if z_current < -9.5:
+            return True
         min_x, max_x = self.done_xy[0]
         min_y, max_y= self.done_xy[1]
         if x_current > max_x or x_current < min_x or y_current > max_y or y_current < min_y:
@@ -207,6 +217,7 @@ class AirSimGym_env(Env):
         # select random pose from inital posinion and generate z
         x, y, angle = [*sample(self.initial_positions, 1)][0]
         if self.env_type == 'outdoor':
+            # define some params for reward calculation
             self.start_point = (x,y)
             min_x, max_x = self.done_xy[0]
             min_y, max_y = self.done_xy[1]

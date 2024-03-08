@@ -120,7 +120,7 @@ class MaxAndSkipEnv(gym.Wrapper):
         # doesn't matter
 
         # self._obs_buffer[1].shape = (360, 640, 3)
-        logger.info(f'self._obs_buffer.shape = {self._obs_buffer.shape}')
+        # logger.info(f'self._obs_buffer.shape = {self._obs_buffer.shape}')
         max_frame = self._obs_buffer.max(axis=0) #  contains some temporal information
         return max_frame, total_reward, done, info
 
