@@ -82,7 +82,6 @@ def train_outroor_DQN():
     env, env_process = connect_exe_env(exe_path="./unreal_envs/outdoor_courtyard/outdoor_courtyard.exe")
     res = training_dqn(env)
     #inference_setup(env)
-
     time.sleep(2)
     close_env(env_process)
     time.sleep(5)
