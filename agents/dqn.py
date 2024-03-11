@@ -8,42 +8,44 @@ import warnings
 import numpy as np
 import torch
 import time
+import pandas as pd
 import os
 from loguru import logger
 from utils.loss import smooth_l1_loss
+from utils.utils import update_logg_reward,load_save_logg_reward
 from utils.pytorch_wrappers import PytorchLazyFrames
 warnings.filterwarnings('ignore')
 
 
 GAMMA = 0.99 # DISCOUNT RATE
-BATCH_SIZE = 2 #32 # FROM REPLAY BUFFER
+BATCH_SIZE = 12 #32 # FROM REPLAY BUFFER
 BUFFER_SIZE = 50_000
-MIN_REPLAY_SIZE = 10 #1_000
-EPSILON_START = 1.0 # E GREEDY POLICY
+MIN_REPLAY_SIZE = 15# 1_000 #1_000
+EPSILON_START = 0.7 # E GREEDY POLICY
 EPSILON_END = 0.02
-EPSILON_DECAY = 10_000
+EPSILON_DECAY = 250
 
-LR = 0.0005
+LR = 5e-4
 
 NUM_ENVS = 1
-TARGET_UPDATE_FREQ = 1000 // NUM_ENVS
-SAVE_PATH, SAVE_INTERVAL = "./saved_weights/", 5 # 300
+TARGET_UPDATE_FREQ = 80 // NUM_ENVS
+SAVE_PATH =  f"./saved_weights/dqn/restart_0/" # 300
 
-LOGGING_INTERVAL = 5
-LOGGING_DIR = f"logs/dqn/{time.time()}"
+LOGGING_INTERVAL = 5 # 10
 
-
-RESTART_EXE = 300 # looks like airsim api with started .exe can`t last forever =) , so need to restart
+RESTART_EXE = 25 # 289 # looks like airsim api with started .exe can`t last forever =) , so need to restart
 
 class DQN(nn.Module):
-    def __init__(self, env):
+    def __init__(self, env, save_path, load_path):
         super(DQN, self).__init__()
         self.action_shape = env.action_space.n
         self.convNet = self.get_conv_net(env)
+        self.save_path, self.load_path = save_path, load_path
+
         logger.info(f"self.convNet = \n{self.convNet}")
         try:
-            self.load_weights( SAVE_PATH + 'dqn_best.pt')
-            logger.info(f"Found { SAVE_PATH + 'dqn_best.pt'} weights, attempt to load ...")
+            self.load_weights(self.load_path + '/dqn_best.pt')
+            logger.info(f"Found {self.load_path  + '/dqn_best.pt'} weights, attempt to load ...")
         except:
             logger.info('No best.pt weights, random initialization ...')
 
@@ -69,7 +71,7 @@ class DQN(nn.Module):
             nn.BatchNorm2d(to_ch),
             nn.ReLU()
         )
-    def get_conv_net(self, env, depths = [32,64,64], kernel_size = [8,4,3], stride = [4,2,1], outp_size = 512):
+    def get_conv_net(self, env, depths = [64,128,64], kernel_size = [8,4,3], stride = [4,2,1], outp_size = 512):
         self.in_channels = list([env.observation_space.shape[0]])
         self.depth = self.in_channels + depths
         self.kernel_size = kernel_size
@@ -119,24 +121,35 @@ class DQN(nn.Module):
 
     def save_best_last(self, best = True):
         if best :
-            torch.save(self.convNet.state_dict(), SAVE_PATH + 'dqn_best.pt')
+            torch.save(self.convNet.state_dict(), self.save_path + 'dqn_best.pt')
         else:
-            torch.save(self.convNet.state_dict(), SAVE_PATH + 'dqn_last.pt')
+            torch.save(self.convNet.state_dict(), self.save_path + 'dqn_last.pt')
 
-    def load_weights(self, weights_path):
+    def load_weights(self, path):
+        self.convNet.load_state_dict(torch.load(path))
 
-        self.convNet.load_state_dict(torch.load(weights_path))
+class DQN_inference(DQN):
+    def __init__(self, env, load_path):
+        super(DQN_inference, self).__init__()
+        self.action_shape = env.action_space.n
+        self.convNet = self.get_conv_net(env)
+        self.save_path = load_path
 
+        logger.info(f"self.convNet = \n{self.convNet}")
+        try:
+            self.load_weights(self.save_path)
+            logger.info(f'{self.save_path} weights initialization ...')
+        except:
+            logger.info('No weights, random initialization ...')
 
-
-def training_dqn(env):
+def training_dqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log = 'restart_best_rewards',  load_path = None):
     replay_buffer = deque(maxlen=BUFFER_SIZE)
-    info_buffer = deque(maxlen=100)
-    online_net = DQN(env=env)
-    target_net = DQN(env=env)
+    info_buffer = deque(maxlen=200)
+    online_net = DQN(env=env, save_path=save_path, load_path = load_path)
+    target_net = DQN(env=env, save_path=save_path, load_path=load_path)
     target_net.load_state_dict(online_net.state_dict())
     optimizer = Adam(lr=LR, params=online_net.parameters())
-    tb_summary = SummaryWriter(LOGGING_DIR)
+    tb_summary = SummaryWriter(logg_tb)
 
     episode_count = 0
 
@@ -188,16 +201,23 @@ def training_dqn(env):
             target_net.load_state_dict(online_net.state_dict())
 
         if step % LOGGING_INTERVAL == 0:
-            mean_rew = np.mean([e['r'] for e in info_buffer]) or 0
+            mean_rew = np.mean([e['r'] for e in info_buffer if len(info_buffer) > 0 ])
+            mean_rew = -10 if np.isnan(mean_rew) else mean_rew
+            mean_duration = np.mean([e['l'] for e in info_buffer]) or 0
+            mean_duration = 0 if np.isnan(mean_duration) else mean_duration
+
+            reward_loggs = update_logg_reward(df = reward_loggs, restart_n = f'restart_{epoch}', reward = mean_rew , duration=mean_duration)
+            load_save_logg_reward(df = reward_loggs,save=True, save_path=save_path, csv_rewards_log=csv_rewards_log)
+
             if mean_rew > last_rew:
                 logger.info(f"\n*****\nCkeckpoint for best model with reward = {mean_rew} at step {step}. Saving model weights....")
                 online_net.save_best_last(best=True)
+                last_rew = mean_rew
+
             logger.info(
                 f"\nCkeckpoint for last model with reward = {mean_rew} at step {step}. Saving model weights....")
             online_net.save_best_last(best=False)
 
-            last_rew = mean_rew
-            mean_duration = np.mean([e['l'] for e in info_buffer]) or 0
             logger.info(f'Episode: {step}\nReward  == {mean_rew}\nDuration == {mean_duration}')
 
             tb_summary.add_scalar('mean_rew', mean_rew if mean_rew is not None else 0, global_step=step)

@@ -1,6 +1,7 @@
 import os, json
-from unreal_envs.initial_positions import get_airsim_position
 from configparser import ConfigParser
+
+import pandas as pd
 from dotmap import DotMap
 import numpy as np
 import cv2
@@ -109,6 +110,31 @@ def visualize_observation(observation, k = 2):
             observation_scaled = cv2.resize(fr, (fr.shape[1], fr.shape[0]))
             cv2.imshow('', observation_scaled)
             if cv2.waitKey(33) == ord('q'): break
+            if cv2.waitKey(33) == ord('p'): return 0
+
+
+def create_folder(SAVE_PATH):
+    os.makedirs(name=SAVE_PATH, exist_ok=True)
+
+from loguru import logger
+def update_logg_reward(df : pd.DataFrame = None, restart_n = 0, reward = -1, duration = 0):
+
+    df = df.append({
+        'restart_n' : restart_n,
+        'reward' : reward,
+        'duration' : duration
+               },ignore_index=True)
+
+    return df
+
+def load_save_logg_reward(csv_rewards_log , save_path, df = None,save = True):
+    if save : df.to_csv(os.path.join(save_path, '..', f'{csv_rewards_log}.csv'))
+    else: # load
+        try:
+            return pd.read_csv(os.path.join(save_path, '..', f'{csv_rewards_log}.csv'))
+        except:
+            # no reward logs exist. return empty df
+            return pd.DataFrame(columns=['restart_n', 'reward', 'duration'])
 
 def read_cfg(config_filename='configs/main.cfg', verbose=False):
     parser = ConfigParser()

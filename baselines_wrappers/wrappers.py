@@ -1,4 +1,4 @@
-
+from loguru import logger
 import gym
 
 class TimeLimit(gym.Wrapper):
@@ -10,6 +10,7 @@ class TimeLimit(gym.Wrapper):
     def step(self, ac):
         observation, reward, done, info = self.env.step(ac)
         self._elapsed_steps += 1
+        # logger.info(f'self._elapsed_steps = {self._elapsed_steps}')
         if self._elapsed_steps >= self._max_episode_steps:
             done = True
             info['TimeLimit.truncated'] = True

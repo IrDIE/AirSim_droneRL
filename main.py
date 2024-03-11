@@ -1,4 +1,8 @@
 import subprocess
+import time
+
+import pandas as pd
+
 from airsim_env import close_env
 from utils.utils import generate_json
 import airsim
@@ -6,15 +10,16 @@ from baselines_wrappers.monitor import Monitor
 from baselines_wrappers.dummy_vec_env import DummyVecEnv
 from airsim_env import AirSimGym_env, make_airsim_deepmind
 from utils.pytorch_wrappers import BatchedPytorchFrameStack, PytorchLazyFrames
-from agents.dqn import *
-from utils.utils import read_cfg, visualize_observation
+from utils.utils import read_cfg, visualize_observation, create_folder
 from unreal_envs.initial_positions import get_airsim_position
 from agents.dqn import *
 
 
-
+EPOCHS = 150
 LOGG = True
 if LOGG: logger.add(f"{os.path.dirname(os.path.realpath(__file__))}/logs/log_{time.time()}.log")
+
+
 
 def start_environment(exe_path):
     path = exe_path
@@ -51,7 +56,7 @@ def connect_exe_env(exe_path = "./unreal_envs/outdoor_courtyard/outdoor_courtyar
 
     env_airsim = AirSimGym_env(client, env_type='outdoor', vehicle_name='drone0', action_type='discrete',
                                initial_positions=restart_positions, observation_as_depth=True, done_xy=done_xy)
-    make_env = lambda: Monitor(make_airsim_deepmind(env_airsim, render_mode='rgb_array', scale_values=True),
+    make_env = lambda: Monitor(make_airsim_deepmind(env_airsim, render_mode='rgb_array', scale_values=True, max_episode_steps = 100 ),
                                allow_early_resets=True)
     # set batched environment
     vec_env = DummyVecEnv([make_env for _ in range(NUM_ENVS)])
@@ -60,39 +65,67 @@ def connect_exe_env(exe_path = "./unreal_envs/outdoor_courtyard/outdoor_courtyar
     return env, env_process
 
 def inference_setup(env):
-    online_net = DQN(env=env)
+    online_net = DQN_inference(env=env,load_path = '' )
     states = env.reset()
+    res = 3
     for step in itertools.count():
         # select action
-        visualize_observation(states)
+        #res = visualize_observation(states)
         states_ = np.stack([lasy.get_frames() for lasy in states])
         actions = online_net.action(states_, epsilon = -1, inference=True)
         # take action
-
-
         new_states, rewards, dones, infos = env.step(actions)
+
         logger.info(f'actions = {actions}, rewards = {rewards}')
         states = new_states
 
         if dones[0]:
             env.reset()
+        if res == 0:
+            break
 
-
-def train_outroor_DQN():
+def inference():
     env, env_process = connect_exe_env(exe_path="./unreal_envs/outdoor_courtyard/outdoor_courtyard.exe")
-    res = training_dqn(env)
-    #inference_setup(env)
-    time.sleep(2)
+    inference_setup(env)
     close_env(env_process)
-    time.sleep(5)
+
+def train_outroor_DQN(logg_tb, save_path, epoch, reward_loggs, load_path = None):
+    env, env_process = connect_exe_env(exe_path="./unreal_envs/outdoor_courtyard/outdoor_courtyard.exe")
+    res=0
+    try:
+        res = training_dqn(env, logg_tb=logg_tb, epoch=epoch, save_path=save_path, load_path=load_path, reward_loggs=reward_loggs)
+        close_env(env_process)
+    except ValueError as e:
+        if str(e) == 'cannot reshape array of size 1 into shape (0,0)':
+            logger.info('Recovering from AirSim error')
+            close_env(env_process)
+            res = -2
+    # except Exception as restart:
+    #     logger.info(f'API is dead... \n{str(restart)}\nClose .exe ')
+    #     close_env(env_process)
+    #     res = -2
+
+    return res
+
 
 def main():
-    for epoch in range(3):
-        global LOGGING_DIR
-        LOGGING_DIR = f"logs/dqn/{time.time()}"
-        train_outroor_DQN()
+    for epoch in range(EPOCHS):
+        LOGG_TB_DIR = f"logs/dqn/restart_exe_{epoch}/" #
+        SAVE_PATH = f"./saved_weights/dqn/restart_{epoch}/"
+        csv_rewards_log = 'restart_best_rewards'
+        create_folder(SAVE_PATH)
+        load_path = None
+        rewards_logs = load_save_logg_reward(save=False, save_path=SAVE_PATH, csv_rewards_log=csv_rewards_log)
+        if len(rewards_logs) > 1:
+            restart_n = rewards_logs[rewards_logs['reward'] == rewards_logs['reward'].max()]['restart_n'].values[0]
+            load_path = f"./saved_weights/dqn/{restart_n}"
+
+        train_outroor_DQN(logg_tb = LOGG_TB_DIR, save_path = SAVE_PATH, epoch=epoch, load_path = load_path,
+                          reward_loggs=rewards_logs)
+        time.sleep(5)
+
 
 
 if __name__ == "__main__":
-    main()
+    main() #main()
 
