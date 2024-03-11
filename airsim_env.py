@@ -73,6 +73,8 @@ class AirSimGym_env(Env):
         observation = self.get_observation()
         reward, done = self.compute_reward()  # TODO - define rewarn calculation function
         info = self._get_info()
+        if action == 1: reward += 0.8
+        if action == 4 and reward != -1: reward = -0.1
         return observation, reward, done, info
 
     # <------------------------
@@ -157,6 +159,20 @@ class AirSimGym_env(Env):
             raise KeyError(f"self.action_type = {self.action_type} is invalid. discrete or continuous are available =)")
 
 
+
+    def check_if_out_of_env(self):
+        position = self.client.simGetVehiclePose().position
+        x_current, y_current , z_current= position.x_val, position.y_val, position.z_val
+        if z_current < -9.5:
+            return True
+        min_x, max_x = self.done_xy[0]
+        min_y, max_y= self.done_xy[1]
+        if x_current > max_x or x_current < min_x or y_current > max_y or y_current < min_y:
+            return True # out of environment defined in unreale4
+        else:
+            return False
+
+
     def compute_reward_outdoor(self):
         #raise NotImplementedError("compute_reward_indoor Not Implemented")
         kinematic = self.client.simGetGroundTruthKinematics()
@@ -173,21 +189,15 @@ class AirSimGym_env(Env):
         # logger.info(f'distance = {distance}')
         # calculate % of max possible
         reward = distance * velocity / self.max_distance_xy
+
+        # logger.info(f'\n**********\nreward = {reward}')
+        # logger.info(f'velocity={velocity}')
+        # logger.info(f'distance={distance}')
+        # logger.info(f'self.max_distance_xy={self.max_distance_xy}')
+        # logger.info(f'distance / self.max_distance_xy={distance / self.max_distance_xy}')
+
+
         return reward
-
-    def check_if_out_of_env(self):
-        position = self.client.simGetVehiclePose().position
-        x_current, y_current , z_current= position.x_val, position.y_val, position.z_val
-        if z_current < -9.5:
-            return True
-        min_x, max_x = self.done_xy[0]
-        min_y, max_y= self.done_xy[1]
-        if x_current > max_x or x_current < min_x or y_current > max_y or y_current < min_y:
-            return True # out of environment defined in unreale4
-        else:
-            return False
-
-
     def compute_reward_indoor(self):
         raise NotImplementedError("compute_reward_indoor Not Implemented")
     def compute_reward(self):
@@ -196,13 +206,15 @@ class AirSimGym_env(Env):
         if self.done_xy is not None:
             far_away = self.check_if_out_of_env()
         if if_collision:
-            reward = -10
+            reward = -1.
             done = True
             return reward, done
         else:
             done = False if not far_away else True
             if self.env_type == 'outdoor':
-                return self.compute_reward_outdoor(), done
+                reward = self.compute_reward_outdoor()
+
+                return reward, done
             elif self.env_type == 'indoor':
                 return self.compute_reward_indoor(), done
             else:
@@ -231,7 +243,7 @@ class AirSimGym_env(Env):
 
         self.client.simSetVehiclePose( reset_pos, ignore_collison=True, vehicle_name=self.vehicle_name)
         logger.info('in reset')
-        time.sleep(0.2)
+        time.sleep(0.1)
         observation = self.get_observation()
         # info = self._get_info()
         return observation #, info
@@ -290,10 +302,11 @@ def close_env(env_process):
 
 def get_DepthImageRGB(client, vehicle_name, env_type):
     camera_name = 1
+    max_tries = 6
+    tries = 0
+    correct = False
     if env_type == 'indoor':
-        max_tries = 3
-        tries = 0
-        correct = False
+
         while not correct and tries < max_tries: # TODO - chech how it will work for indoor environment
             tries += 1
             responses = client.simGetImages(
@@ -308,9 +321,19 @@ def get_DepthImageRGB(client, vehicle_name, env_type):
 
         depth = img1d.reshape(responses.height, responses.width, 3)[:, :, 0]
     elif env_type == 'outdoor':
-        responses = client.simGetImages([airsim.ImageRequest(camera_name, airsim.ImageType.DepthVis, True)],
-                                             vehicle_name=vehicle_name)[0]
-        depth = airsim.list_to_2d_float_array(responses.image_data_float, responses.width, responses.height)
+        while not correct and tries < max_tries: # TODO - chech how it will work for indoor environment
+            tries += 1
+            responses = client.simGetImages([airsim.ImageRequest(camera_name, airsim.ImageType.DepthVis, True)],
+                                                 vehicle_name=vehicle_name)
+            responses = responses[0]
+            if responses.width == 0:
+                logger.info(f'\n /// BUG ***\n')
+                logger.info(f'responses =BUG= {responses}')
+                logger.info(f'responses.width, responses.height = {responses.width, responses.height}')
+
+            depth = airsim.list_to_2d_float_array(responses.image_data_float, responses.width, responses.height)
+            if responses.width == 320:
+                correct = True
 
     return depth
 
