@@ -4,9 +4,6 @@ from gymnasium import Env
 from gymnasium.spaces import Discrete
 from gymnasium.spaces import Box
 
-# from gym import Env
-# from gym.spaces import Discrete
-# from gym.spaces import Box
 import numpy as np
 import math
 from airsim.utils import to_eularian_angles
