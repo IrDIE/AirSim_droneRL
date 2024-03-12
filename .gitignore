@@ -1,5 +1,4 @@
 unreal_envs/outdoor_courtyard
-train_DQN.py
 logs/*
 __pycache__
 saved_weights/*
