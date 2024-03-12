@@ -19,8 +19,8 @@ warnings.filterwarnings('ignore')
 
 GAMMA = 0.99 # DISCOUNT RATE
 BATCH_SIZE = 12 #32 # FROM REPLAY BUFFER
-BUFFER_SIZE = 50_000
-MIN_REPLAY_SIZE = 15# 1_000 #1_000
+BUFFER_SIZE = 10_000
+MIN_REPLAY_SIZE = 1_000 #1_000
 EPSILON_START = 0.7 # E GREEDY POLICY
 EPSILON_END = 0.02
 EPSILON_DECAY = 250
@@ -28,12 +28,8 @@ EPSILON_DECAY = 250
 LR = 5e-4
 
 NUM_ENVS = 1
-TARGET_UPDATE_FREQ = 80 // NUM_ENVS
-SAVE_PATH =  f"./saved_weights/dqn/restart_0/" # 300
-
-LOGGING_INTERVAL = 5 # 10
-
-RESTART_EXE = 25 # 289 # looks like airsim api with started .exe can`t last forever =) , so need to restart
+TARGET_UPDATE_FREQ = 100 // NUM_ENVS
+LOGGING_INTERVAL = 50 # 10
 
 class DQN(nn.Module):
     def __init__(self, env, save_path, load_path):
@@ -130,7 +126,7 @@ class DQN(nn.Module):
 
 class DQN_inference(DQN):
     def __init__(self, env, load_path):
-        super(DQN_inference, self).__init__()
+        super().__init__( env, load_path,load_path)
         self.action_shape = env.action_space.n
         self.convNet = self.get_conv_net(env)
         self.save_path = load_path
@@ -224,7 +220,7 @@ def training_dqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log =
             tb_summary.add_scalar('mean_duration', mean_duration if mean_duration is not None else 0, global_step=step)
             tb_summary.add_scalar('episode_count', episode_count, global_step=step)
 
-            if step > RESTART_EXE:
-                logger.info(f'Episode: {step}\nRestart .exe')
-                return -1
+            # if step > RESTART_EXE:
+            #     logger.info(f'Episode: {step}\nRestart .exe')
+            #     return -1
 

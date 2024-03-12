@@ -16,7 +16,7 @@ from agents.dqn import *
 
 
 EPOCHS = 150
-LOGG = True
+LOGG = False
 if LOGG: logger.add(f"{os.path.dirname(os.path.realpath(__file__))}/logs/log_{time.time()}.log")
 
 
@@ -33,7 +33,7 @@ def connect_drone(ip_address='127.0.0.5', num_agents=1, client=[]):
         client.reset()
     client = airsim.MultirotorClient(ip=ip_address, timeout_value=10)
     client.confirmConnection()
-    time.sleep(1)
+    time.sleep(0.5)
 
     old_posit = {}
     for agents in range(num_agents):
@@ -65,7 +65,8 @@ def connect_exe_env(exe_path = "./unreal_envs/outdoor_courtyard/outdoor_courtyar
     return env, env_process
 
 def inference_setup(env):
-    online_net = DQN_inference(env=env,load_path = '' )
+    load_path = './saved_weights/dqn/restart_7/dqn_best.pt'
+    online_net = DQN(env=env, save_path=load_path, load_path=load_path)
     states = env.reset()
     res = 3
     for step in itertools.count():
@@ -75,12 +76,12 @@ def inference_setup(env):
         actions = online_net.action(states_, epsilon = -1, inference=True)
         # take action
         new_states, rewards, dones, infos = env.step(actions)
-
-        logger.info(f'actions = {actions}, rewards = {rewards}')
+        logger.info(f'actions = {actions}, rewards = {rewards}, dones = {dones}')
         states = new_states
 
         if dones[0]:
             env.reset()
+            time.sleep(1)
         if res == 0:
             break
 
@@ -100,10 +101,10 @@ def train_outroor_DQN(logg_tb, save_path, epoch, reward_loggs, load_path = None)
             logger.info('Recovering from AirSim error')
             close_env(env_process)
             res = -2
-    # except Exception as restart:
-    #     logger.info(f'API is dead... \n{str(restart)}\nClose .exe ')
-    #     close_env(env_process)
-    #     res = -2
+    except Exception as restart:
+        logger.info(f'API is dead... \n{str(restart)}\nClose .exe ')
+        close_env(env_process)
+        res = -2
 
     return res
 
@@ -127,5 +128,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main() #main()
+    inference() #main()
 

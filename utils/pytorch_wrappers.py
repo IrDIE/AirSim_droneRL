@@ -1,3 +1,4 @@
+import time
 from collections import deque
 from loguru import logger
 import gym
@@ -7,32 +8,6 @@ from baselines_wrappers import VecEnvWrapper
 from baselines_wrappers.atari_wrappers import NoopResetEnv, MaxAndSkipEnv, EpisodicLifeEnv, ScaledFloatFrame, \
     ClipRewardEnv, WarpFrame
 from baselines_wrappers.wrappers import TimeLimit
-
-
-def make_atari_deepmind(env_id, max_episode_steps=None, scale_values=False, clip_rewards=True, render_mode="human"):
-    env = gym.make(env_id, new_step_api =False , render_mode=render_mode) # apply_api_compatibility=False
-    env = NoopResetEnv(env, noop_max=30)
-
-    if 'NoFrameskip' in env.spec.id:
-        env = MaxAndSkipEnv(env, skip=4)
-
-    if max_episode_steps is not None:
-        env = TimeLimit(env, max_episode_steps=max_episode_steps)
-
-    env = EpisodicLifeEnv(env)
-
-    env = WarpFrame(env)
-
-    if scale_values:
-        env = ScaledFloatFrame(env)
-
-    if clip_rewards:
-        env = ClipRewardEnv(env)
-
-    env = TransposeImageObs(env, axis_order=[2, 0, 1])  # Convert to torch order (C, H, W)
-
-    return env
-
 
 
 class TransposeImageObs(gym.ObservationWrapper):
@@ -79,6 +54,7 @@ class BatchedPytorchFrameStack(VecEnvWrapper):
         for _ in range(self.k):
             for i, obs in enumerate(obses):
                 self.batch_stacks[i].append(obs.copy())
+        time.sleep(0.02)
         return self._get_ob()
 
     def step_wait(self):

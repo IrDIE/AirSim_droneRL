@@ -74,7 +74,7 @@ class AirSimGym_env(Env):
         reward, done = self.compute_reward()  # TODO - define rewarn calculation function
         info = self._get_info()
         if action == 1: reward += 0.8
-        if action == 4 and reward != -1: reward = -0.1
+        if action == 4 and reward != -10: reward = -0.1
         return observation, reward, done, info
 
     # <------------------------
@@ -206,7 +206,7 @@ class AirSimGym_env(Env):
         if self.done_xy is not None:
             far_away = self.check_if_out_of_env()
         if if_collision:
-            reward = -1.
+            reward = -10
             done = True
             return reward, done
         else:
@@ -238,13 +238,16 @@ class AirSimGym_env(Env):
             y_max_possible = max(abs(min_y - y), abs(max_y - y))  # y_max_possible distance from strart point
             self.max_distance_xy = math.sqrt((x_max_possible*x_max_possible) + (y_max_possible*y_max_possible))
             # logger.info(f'self.max_distance_xy = {self.max_distance_xy}')
+
         reset_pos = airsim.Pose(airsim.Vector3r(x, y, reset_height),
                                airsim.to_quaternion(0, 0, (angle)*(sample([+1, -1], 1)[0])*np.pi/180))
 
         self.client.simSetVehiclePose( reset_pos, ignore_collison=True, vehicle_name=self.vehicle_name)
+        self.client.moveByVelocityAsync(0, 0, 0, 2, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False)).join()
         logger.info('in reset')
         time.sleep(0.1)
         observation = self.get_observation()
+
         # info = self._get_info()
         return observation #, info
 
