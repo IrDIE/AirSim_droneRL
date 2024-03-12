@@ -1,8 +1,6 @@
 import subprocess
 import time
-
-import pandas as pd
-
+import os
 from airsim_env import close_env
 from utils.utils import generate_json
 import airsim
@@ -18,8 +16,6 @@ from agents.dqn import *
 EPOCHS = 150
 LOGG = False
 if LOGG: logger.add(f"{os.path.dirname(os.path.realpath(__file__))}/logs/log_{time.time()}.log")
-
-
 
 def start_environment(exe_path):
     path = exe_path

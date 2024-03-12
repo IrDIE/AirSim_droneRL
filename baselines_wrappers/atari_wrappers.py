@@ -1,12 +1,8 @@
 import numpy as np
 import os
 os.environ.setdefault('PATH', '')
-from collections import deque
-import gym
-from gym import spaces
-from .wrappers import TimeLimit
+import gymnasium as gym
 import cv2
-from loguru import logger
 cv2.ocl.setUseOpenCL(False)
 
 

@@ -1,7 +1,7 @@
 import time
 from collections import deque
 from loguru import logger
-import gym
+import gymnasium as gym
 import numpy as np
 
 from baselines_wrappers import VecEnvWrapper

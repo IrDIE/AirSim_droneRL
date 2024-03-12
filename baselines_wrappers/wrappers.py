@@ -1,5 +1,5 @@
 from loguru import logger
-import gym
+import gymnasium as gym
 
 class TimeLimit(gym.Wrapper):
     def __init__(self, env, max_episode_steps=None):

@@ -1,12 +1,18 @@
 from loguru import logger
-from gym import Env
-from gym.spaces import Discrete
+
+from gymnasium import Env
+from gymnasium.spaces import Discrete
+from gymnasium.spaces import Box
+
+# from gym import Env
+# from gym.spaces import Discrete
+# from gym.spaces import Box
 import numpy as np
 import math
 from airsim.utils import to_eularian_angles
 from baselines_wrappers.atari_wrappers import MaxAndSkipEnv, ClipRewardEnv
 from baselines_wrappers.wrappers import TimeLimit
-from gym.envs.registration import register
+
 from airsim import MultirotorClient
 import matplotlib.pyplot as plt
 import airsim
@@ -15,7 +21,7 @@ import time
 from PIL import Image
 import psutil
 import cv2
-from gym.spaces import Box
+
 from typing import TypeVar
 from random import sample
 ActType = TypeVar("ActType")
@@ -75,7 +81,7 @@ class AirSimGym_env(Env):
         info = self._get_info()
         if action == 1: reward += 0.8
         if action == 4 and reward != -10: reward = -0.1
-        return observation, reward, done, info
+        return observation, reward, done, info # observation, reward, terminated, truncated, info
 
     # <------------------------
     def get_yaw(self):
@@ -202,15 +208,16 @@ class AirSimGym_env(Env):
         raise NotImplementedError("compute_reward_indoor Not Implemented")
     def compute_reward(self):
         if_collision = self.client.simGetCollisionInfo(vehicle_name=self.vehicle_name).has_collided
-        far_away = False
+        terminated = False
+        truncated = False
         if self.done_xy is not None:
-            far_away = self.check_if_out_of_env()
+            terminated = self.check_if_out_of_env()
         if if_collision:
             reward = -10
-            done = True
-            return reward, done
+            terminated = True
+            return reward, terminated
         else:
-            done = False if not far_away else True
+            done = False if not terminated else True
             if self.env_type == 'outdoor':
                 reward = self.compute_reward_outdoor()
 
@@ -248,8 +255,8 @@ class AirSimGym_env(Env):
         time.sleep(0.1)
         observation = self.get_observation()
 
-        # info = self._get_info()
-        return observation #, info
+        info = self._get_info()
+        return observation , info
 
     def _get_info(self, get_kinematic = False):
 
@@ -378,10 +385,3 @@ def make_airsim_deepmind(airsim_env_class, max_episode_steps=None, scale_values=
     env = TransposeImageObs(env, axis_order=[2, 0, 1])  # Convert to torch order (C, H, W)
     return env
 
-
-
-register(
-    id='AirSimGym_env-v0',
-    entry_point='gym.envs.box2d:AirSim_0',
-    max_episode_steps=10000,
-)
