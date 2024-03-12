@@ -77,11 +77,12 @@ class AirSimGym_env(Env):
         if action == 5: self.move_down()
 
         observation = self.get_observation()
-        reward, done = self.compute_reward()  # TODO - define rewarn calculation function
+        reward, terminated, truncated = self.compute_reward()  # TODO - define rewarn calculation function
         info = self._get_info()
         if action == 1: reward += 0.8
         if action == 4 and reward != -10: reward = -0.1
-        return observation, reward, done, info # observation, reward, terminated, truncated, info
+
+        return observation, reward, terminated, truncated, info # observation, reward, terminated, truncated, info
 
     # <------------------------
     def get_yaw(self):
@@ -97,21 +98,23 @@ class AirSimGym_env(Env):
         vx = math.cos(yaw_rad) * 0.05
         vy = math.sin(yaw_rad) * 0.05
         self.client.moveByVelocityAsync(vx , vy , 0, 1, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False)).join()
-        time.sleep(0.01)
+
 
     def rotate_left(self):
         yaw_deg, yaw_rad = self.get_yaw()
         z = self.client.simGetGroundTruthKinematics().position.z_val
         yaw_rad -= math.radians(10)
+        self.client.moveByVelocityAsync(0, 0, 0, 1, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False)).join()
         self.client.moveByAngleZAsync(0,0,z,yaw_rad,1).join()
-        time.sleep(0.01)
+
 
     def rotate_right(self):
         yaw_deg, yaw_rad = self.get_yaw()
         yaw_rad += math.radians(10)
         z = self.client.simGetGroundTruthKinematics().position.z_val
+        self.client.moveByVelocityAsync(0, 0, 0, 1, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False)).join()
         self.client.moveByAngleZAsync(0,0,z,yaw_rad,1).join()
-        time.sleep(0.01)
+
 
     def move_up(self):
         linear_velocity = self.client.simGetGroundTruthKinematics().linear_velocity
@@ -164,8 +167,6 @@ class AirSimGym_env(Env):
         else:
             raise KeyError(f"self.action_type = {self.action_type} is invalid. discrete or continuous are available =)")
 
-
-
     def check_if_out_of_env(self):
         position = self.client.simGetVehiclePose().position
         x_current, y_current , z_current= position.x_val, position.y_val, position.z_val
@@ -177,7 +178,6 @@ class AirSimGym_env(Env):
             return True # out of environment defined in unreale4
         else:
             return False
-
 
     def compute_reward_outdoor(self):
         #raise NotImplementedError("compute_reward_indoor Not Implemented")
@@ -208,27 +208,30 @@ class AirSimGym_env(Env):
         raise NotImplementedError("compute_reward_indoor Not Implemented")
     def compute_reward(self):
         if_collision = self.client.simGetCollisionInfo(vehicle_name=self.vehicle_name).has_collided
+        out_of_env = False
         terminated = False
         truncated = False
+
         if self.done_xy is not None:
-            terminated = self.check_if_out_of_env()
+            out_of_env = self.check_if_out_of_env()
         if if_collision:
             reward = -10
             terminated = True
-            return reward, terminated
+            return reward, terminated, truncated
         else:
-            done = False if not terminated else True
+            terminated = False if not out_of_env else True
             if self.env_type == 'outdoor':
                 reward = self.compute_reward_outdoor()
-
-                return reward, done
+                return reward, terminated, truncated
             elif self.env_type == 'indoor':
-                return self.compute_reward_indoor(), done
+                reward = self.compute_reward_indoor()
+                return reward, terminated, truncated
             else:
                 raise KeyError(f"self.env_type = {self.env_type} is invalid. indoor or outdoor are available =)")
 
 
     def reset(self, seed=None, options=None, level = 0):
+        self.client.confirmConnection()
         if seed is None:
             np.random.seed(RANDOM_SEED)
             self.np_random = np.random.default_rng()
@@ -250,13 +253,12 @@ class AirSimGym_env(Env):
                                airsim.to_quaternion(0, 0, (angle)*(sample([+1, -1], 1)[0])*np.pi/180))
 
         self.client.simSetVehiclePose( reset_pos, ignore_collison=True, vehicle_name=self.vehicle_name)
-        self.client.moveByVelocityAsync(0, 0, 0, 2, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False)).join()
+        self.client.moveByVelocityAsync(0, 0, 0, 1, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False)).join()
         logger.info('in reset')
-        time.sleep(0.1)
+        time.sleep(0.05)
         observation = self.get_observation()
-
         info = self._get_info()
-        return observation , info
+        return observation, info
 
     def _get_info(self, get_kinematic = False):
 
@@ -363,7 +365,7 @@ def get_MonocularImageRGB(client, vehicle_name):
 
     return camera_image
 
-def make_airsim_deepmind(airsim_env_class, max_episode_steps=None, scale_values=False, clip_rewards=False, render_mode="human", skip=2):
+def make_airsim_deepmind(airsim_env_class, max_episode_steps=None, skip=2):
     env = airsim_env_class # gym.make(env_id, new_step_api =False , render_mode=render_mode) # apply_api_compatibility=False
     # env = NoopResetEnv(env, noop_max=30) # We already set random initialisation in .reset()
     env = MaxAndSkipEnv(env, skip=skip) # TODO - WTF
@@ -377,10 +379,6 @@ def make_airsim_deepmind(airsim_env_class, max_episode_steps=None, scale_values=
 
     # if scale_values:
     #     env = ScaledFloatFrame(env)
-
-    # TODO - define if clip reward or not and how
-    if clip_rewards:
-        env = ClipRewardEnv(env)
 
     env = TransposeImageObs(env, axis_order=[2, 0, 1])  # Convert to torch order (C, H, W)
     return env
