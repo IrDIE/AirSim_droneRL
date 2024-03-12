@@ -11,10 +11,11 @@ from utils.pytorch_wrappers import BatchedPytorchFrameStack, PytorchLazyFrames
 from utils.utils import read_cfg, visualize_observation, create_folder
 from unreal_envs.initial_positions import get_airsim_position
 from agents.dqn import *
+from agents.double_dqn import *
 
 
 EPOCHS = 150
-LOGG = False
+LOGG = True
 if LOGG: logger.add(f"{os.path.dirname(os.path.realpath(__file__))}/logs/log_{time.time()}.log")
 
 def start_environment(exe_path):
@@ -104,11 +105,29 @@ def train_outroor_DQN(logg_tb, save_path, epoch, reward_loggs, load_path = None)
 
     return res
 
+def train_outroor_DDQN(logg_tb, save_path, epoch, reward_loggs, load_path = None):
+    env, env_process = connect_exe_env(exe_path="./unreal_envs/outdoor_courtyard/outdoor_courtyard.exe")
+    res=0
+    try:
+        res = training_ddqn(env, logg_tb=logg_tb, epoch=epoch, save_path=save_path, load_path=load_path, reward_loggs=reward_loggs)
+        close_env(env_process)
+    except ValueError as e:
+        if str(e) == 'cannot reshape array of size 1 into shape (0,0)':
+            logger.info('Recovering from AirSim error')
+            close_env(env_process)
+            res = -2
+    except Exception as restart:
+        logger.info(f'API is dead... \n{str(restart)}\nClose .exe ')
+        close_env(env_process)
+        res = -2
 
-def main():
+    return res
+
+def main_dqn():
     for epoch in range(EPOCHS):
-        LOGG_TB_DIR = f"logs/dqn2/restart_exe_{epoch}/" #
-        SAVE_PATH = f"./saved_weights/dqn2/restart_{epoch}/"
+
+        LOGG_TB_DIR = f"logs/dqn2/restart_exe_{epoch}/" # <------- change here
+        SAVE_PATH = f"./saved_weights/dqn2/restart_{epoch}/" # <------- change here
 
         csv_rewards_log = 'restart_best_rewards'
         create_folder(SAVE_PATH)
@@ -116,14 +135,31 @@ def main():
         rewards_logs = load_save_logg_reward(save=False, save_path=SAVE_PATH, csv_rewards_log=csv_rewards_log)
         if len(rewards_logs) > 1:
             restart_n = rewards_logs[rewards_logs['reward'] == rewards_logs['reward'].max()]['restart_n'].values[0]
-            load_path = f"./saved_weights/dqn/{restart_n}"
+            load_path = f"./saved_weights/dqn2/{restart_n}" # <------- change here
 
         train_outroor_DQN(logg_tb = LOGG_TB_DIR, save_path = SAVE_PATH, epoch=epoch, load_path = load_path,
                           reward_loggs=rewards_logs)
         time.sleep(5)
 
+def main_ddqn():
+    for epoch in range(EPOCHS):
+
+        LOGG_TB_DIR = f"logs/ddqn/restart_exe_{epoch}/" # <------- change here
+        SAVE_PATH = f"./saved_weights/ddqn/restart_{epoch}/" # <------- change here
+
+        csv_rewards_log = 'restart_best_rewards'
+        create_folder(SAVE_PATH)
+        load_path = None
+        rewards_logs = load_save_logg_reward(save=False, save_path=SAVE_PATH, csv_rewards_log=csv_rewards_log)
+        if len(rewards_logs) > 1:
+            restart_n = rewards_logs[rewards_logs['reward'] == rewards_logs['reward'].max()]['restart_n'].values[0]
+            load_path = f"./saved_weights/ddqn/{restart_n}" # <------- change here
+
+        train_outroor_DDQN(logg_tb = LOGG_TB_DIR, save_path = SAVE_PATH, epoch=epoch, load_path = load_path,
+                          reward_loggs=rewards_logs)
+        time.sleep(5)
 
 
 if __name__ == "__main__":
-    inference() #main()
+    main_ddqn() #main()
 

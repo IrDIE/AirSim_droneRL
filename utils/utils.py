@@ -119,11 +119,11 @@ def create_folder(SAVE_PATH):
 from loguru import logger
 def update_logg_reward(df : pd.DataFrame = None, restart_n = 0, reward = -1, duration = 0):
 
-    df = df.append({
+    df =  pd.concat([df, pd.DataFrame([{
         'restart_n' : restart_n,
         'reward' : reward,
         'duration' : duration
-               },ignore_index=True)
+               }])], ignore_index=True)
 
     return df
 

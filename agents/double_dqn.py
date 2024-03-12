@@ -29,9 +29,9 @@ TARGET_UPDATE_FREQ = 150 // NUM_ENVS
 LOGGING_INTERVAL = 50 # 10
 RESTART_EXE = 5
 
-class DQN(nn.Module):
+class Double_DQN(nn.Module):
     def __init__(self, env, save_path, load_path):
-        super(DQN, self).__init__()
+        super(Double_DQN, self).__init__()
         self.action_shape = env.action_space.n
         self.convNet = self.get_conv_net(env)
         self.save_path, self.load_path = save_path, load_path
@@ -103,10 +103,13 @@ class DQN(nn.Module):
         else :
             states = torch.as_tensor(states_, dtype=torch.float32)
             new_states = torch.as_tensor(np.asarray(new_states_), dtype=torch.float32)
+        # for double:
+        target_online_q_values = self(new_states)
+        best_q_index = target_online_q_values.argmax(dim=1, keepdim=True)
+        target_target_q_values = target_net(new_states)
+        targets_selected_q_values = torch.gather(input=target_target_q_values, dim = 1, index= best_q_index)
+        targets = rews + GAMMA * (1 - dones) * targets_selected_q_values
 
-        target_q_values = target_net(new_states)
-        max_target_q_values = target_q_values.max(dim=1, keepdim=True)[0]
-        targets = rews + GAMMA * (1 - dones) * max_target_q_values
         # loss
         q_values = self(states)
         action_q_values = torch.gather(q_values, dim=1, index=actions)
@@ -124,11 +127,11 @@ class DQN(nn.Module):
         self.convNet.load_state_dict(torch.load(path))
 
 
-def training_dqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log = 'restart_best_rewards',  load_path = None):
+def training_ddqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log = 'restart_best_rewards',  load_path = None):
     replay_buffer = deque(maxlen=BUFFER_SIZE)
     info_buffer = deque(maxlen=200)
-    online_net = DQN(env=env, save_path=save_path, load_path = load_path)
-    target_net = DQN(env=env, save_path=save_path, load_path=load_path)
+    online_net = Double_DQN(env=env, save_path=save_path, load_path = load_path)
+    target_net = Double_DQN(env=env, save_path=save_path, load_path=load_path)
     target_net.load_state_dict(online_net.state_dict())
     optimizer = Adam(lr=LR, params=online_net.parameters())
     tb_summary = SummaryWriter(logg_tb)

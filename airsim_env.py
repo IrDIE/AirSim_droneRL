@@ -51,7 +51,7 @@ class AirSimGym_env(Env):
         self.observation_space = Box(
             low=0., high=1., shape=self.observation_shape, dtype=np.float32 # 3 channels
         )
-        self.height_airsim_restart_positions = [-4.35,-5.4, -6.5,-7.6,-8.5, -9. ]
+        self.height_airsim_restart_positions = [-5.35,-5.4, -6.5,-7.6,-8.5, -9. ]
         self.reward_range = None
         self.initial_positions = initial_positions #self.client.simGetVehiclePose(vehicle_name=self.vehicle_name)
 
