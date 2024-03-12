@@ -71,11 +71,13 @@ class AirSimGym_env(Env):
         if action == 5: self.move_down()
 
         observation = self.get_observation()
-        reward, done = self.compute_reward()  # TODO - define rewarn calculation function
+
+        reward, terminated, truncated = self.compute_reward()  # TODO - define rewarn calculation function
         info = self._get_info()
+
         if action == 1: reward += 0.8
         if action == 4 and reward != -10: reward = -0.1
-        return observation, reward, done, info
+        return observation, reward, terminated, truncated, info
 
     # <------------------------
     def get_yaw(self):
@@ -201,22 +203,27 @@ class AirSimGym_env(Env):
     def compute_reward_indoor(self):
         raise NotImplementedError("compute_reward_indoor Not Implemented")
     def compute_reward(self):
+
         if_collision = self.client.simGetCollisionInfo(vehicle_name=self.vehicle_name).has_collided
         far_away = False
+        truncated = False
+        terminated = False
+
         if self.done_xy is not None:
             far_away = self.check_if_out_of_env()
         if if_collision:
             reward = -10
-            done = True
-            return reward, done
+            terminated = True
+            return reward, terminated, truncated
+
         else:
-            done = False if not far_away else True
+            terminated = False if not far_away else True
             if self.env_type == 'outdoor':
                 reward = self.compute_reward_outdoor()
-
-                return reward, done
+                return reward, terminated, truncated
             elif self.env_type == 'indoor':
-                return self.compute_reward_indoor(), done
+                reward = self.compute_reward_indoor()
+                return reward, terminated, truncated
             else:
                 raise KeyError(f"self.env_type = {self.env_type} is invalid. indoor or outdoor are available =)")
 
