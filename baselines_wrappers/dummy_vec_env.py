@@ -1,3 +1,4 @@
+from loguru import logger
 import numpy as np
 from .vec_env import VecEnv
 from .util import copy_obs_dict, dict_to_obs, obs_space_info
@@ -22,7 +23,8 @@ class DummyVecEnv(VecEnv):
         self.keys, shapes, dtypes = obs_space_info(obs_space)
 
         self.buf_obs = { k: np.zeros((self.num_envs,) + tuple(shapes[k]), dtype=dtypes[k]) for k in self.keys }
-        self.buf_dones = np.zeros((self.num_envs,), dtype=np.bool_)
+        self.buf_termin = np.zeros((self.num_envs,), dtype=np.bool_)
+        self.buf_trunc = np.zeros((self.num_envs,), dtype=np.bool_)
         self.buf_rews  = np.zeros((self.num_envs,), dtype=np.float32)
         self.buf_infos = [{} for _ in range(self.num_envs)]
         self.actions = None
@@ -48,11 +50,11 @@ class DummyVecEnv(VecEnv):
             # if isinstance(self.envs[e].action_space, spaces.Discrete):
             #    action = int(action)
 
-            obs, self.buf_rews[e] , self.buf_dones[e], self.buf_infos[e] = self.envs[e].step(action)
-            if self.buf_dones[e]:
-                obs = self.envs[e].reset()
+            obs, self.buf_rews[e] , self.buf_termin[e], self.buf_trunc[e],  self.buf_infos[e] = self.envs[e].step(action)
+            if self.buf_termin[e] or self.buf_trunc[e]:
+                obs, info = self.envs[e].reset()
             self._save_obs(e, obs)
-        return (self._obs_from_buf(), np.copy(self.buf_rews), np.copy(self.buf_dones),
+        return (self._obs_from_buf(), np.copy(self.buf_rews), np.copy(self.buf_termin),np.copy(self.buf_trunc),
                 self.buf_infos.copy())
 
     def reset(self, **kwargd):

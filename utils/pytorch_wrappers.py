@@ -54,16 +54,15 @@ class BatchedPytorchFrameStack(VecEnvWrapper):
         for _ in range(self.k):
             for i, obs in enumerate(obses):
                 self.batch_stacks[i].append(obs.copy())
-        time.sleep(0.02)
         return self._get_ob()
 
     def step_wait(self):
-        obses, reward, done, info = self.env.step_wait()
+        obses, reward, terminated, truncated, info = self.env.step_wait()
         for i, obs_frame in enumerate(obses):
             self.batch_stacks[i].append(obs_frame)
 
         ret_ob = self._get_ob()
-        return ret_ob, reward, done, info
+        return ret_ob, reward,  terminated, truncated, info
 
     def _get_ob(self):
         return [PytorchLazyFrames(list(batch_stack), axis=0) for batch_stack in self.batch_stacks]

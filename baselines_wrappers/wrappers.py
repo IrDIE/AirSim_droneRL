@@ -8,11 +8,13 @@ class TimeLimit(gym.Wrapper):
         self._elapsed_steps = 0
 
     def step(self, ac):
+
         observation, reward, terminated, truncated, info = self.env.step(ac)
         self._elapsed_steps += 1
         # logger.info(f'self._elapsed_steps = {self._elapsed_steps}')
         if self._elapsed_steps >= self._max_episode_steps:
             truncated = True
+            terminated = True
             info['TimeLimit.truncated'] = True
         return observation, reward, terminated, truncated, info
 

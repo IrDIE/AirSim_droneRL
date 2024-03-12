@@ -2,6 +2,7 @@ __all__ = ['Monitor']
 
 import time
 
+import loguru
 from gymnasium.core import Wrapper
 
 
@@ -26,14 +27,16 @@ class Monitor(Wrapper):
 
     def reset(self, **kwargs):
         self.reset_state()
-        for k in self.reset_keywords:
-            v = kwargs.get(k)
-            if v is None:
-                raise ValueError('Expected you to pass kwarg %s into reset'%k)
-            self.current_reset_info[k] = v
+        # for k in self.reset_keywords:
+        #     loguru.logger.info(f'reset **** reset_keywords')
+        #     v = kwargs.get(k)
+        #     if v is None:
+        #         raise ValueError('Expected you to pass kwarg %s into reset'%k)
+        #     self.current_reset_info[k] = v
         return self.env.reset(**kwargs)
 
     def reset_state(self):
+
         if not self.allow_early_resets and not self.needs_reset:
             raise RuntimeError("Tried to reset an environment before done. If you want to allow early resets, wrap your env with Monitor(env, path, allow_early_resets=True)")
         self.rewards = []
@@ -43,9 +46,9 @@ class Monitor(Wrapper):
     def step(self, action):
         if self.needs_reset:
             raise RuntimeError("Tried to step environment that needs reset")
-        ob, rew, done, info = self.env.step(action)
-        self.update(ob, rew, done, info)
-        return (ob, rew, done, info)
+        ob, rew, terminated, truncated, info = self.env.step(action)
+        self.update(ob, rew, terminated, info)
+        return (ob, rew, terminated, truncated, info)
 
     def update(self, ob, rew, done, info):
         self.rewards.append(rew)

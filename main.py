@@ -29,7 +29,7 @@ def connect_drone(ip_address='127.0.0.5', num_agents=1, client=[]):
         client.reset()
     client = airsim.MultirotorClient(ip=ip_address, timeout_value=10)
     client.confirmConnection()
-    time.sleep(0.5)
+    time.sleep(0.1)
 
     old_posit = {}
     for agents in range(num_agents):
@@ -52,7 +52,7 @@ def connect_exe_env(exe_path = "./unreal_envs/outdoor_courtyard/outdoor_courtyar
 
     env_airsim = AirSimGym_env(client, env_type='outdoor', vehicle_name='drone0', action_type='discrete',
                                initial_positions=restart_positions, observation_as_depth=True, done_xy=done_xy)
-    make_env = lambda: Monitor(make_airsim_deepmind(env_airsim, render_mode='rgb_array', scale_values=True, max_episode_steps = 100 ),
+    make_env = lambda: Monitor(make_airsim_deepmind(env_airsim, max_episode_steps = 100 ),
                                allow_early_resets=True)
     # set batched environment
     vec_env = DummyVecEnv([make_env for _ in range(NUM_ENVS)])
@@ -61,7 +61,7 @@ def connect_exe_env(exe_path = "./unreal_envs/outdoor_courtyard/outdoor_courtyar
     return env, env_process
 
 def inference_setup(env):
-    load_path = './saved_weights/dqn/restart_7/dqn_best.pt'
+    load_path = './saved_weights/dqn/restart_5/dqn_best.pt'
     online_net = DQN(env=env, save_path=load_path, load_path=load_path)
     states = env.reset()
     res = 3
@@ -71,13 +71,13 @@ def inference_setup(env):
         states_ = np.stack([lasy.get_frames() for lasy in states])
         actions = online_net.action(states_, epsilon = -1, inference=True)
         # take action
-        new_states, rewards, dones, infos = env.step(actions)
-        logger.info(f'actions = {actions}, rewards = {rewards}, dones = {dones}')
+        new_states, rewards, terminated, truncated, infos = env.step(actions)
+        logger.info(f'actions = {actions}, rewards = {rewards}, terminated = {terminated}, truncated = {truncated}')
         states = new_states
 
-        if dones[0]:
+        if terminated[0] or truncated[0]:
             env.reset()
-            time.sleep(1)
+            time.sleep(0.01)
         if res == 0:
             break
 
@@ -107,8 +107,9 @@ def train_outroor_DQN(logg_tb, save_path, epoch, reward_loggs, load_path = None)
 
 def main():
     for epoch in range(EPOCHS):
-        LOGG_TB_DIR = f"logs/dqn/restart_exe_{epoch}/" #
-        SAVE_PATH = f"./saved_weights/dqn/restart_{epoch}/"
+        LOGG_TB_DIR = f"logs/dqn2/restart_exe_{epoch}/" #
+        SAVE_PATH = f"./saved_weights/dqn2/restart_{epoch}/"
+
         csv_rewards_log = 'restart_best_rewards'
         create_folder(SAVE_PATH)
         load_path = None

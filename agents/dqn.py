@@ -14,7 +14,6 @@ from utils.utils import update_logg_reward,load_save_logg_reward
 from utils.pytorch_wrappers import PytorchLazyFrames
 warnings.filterwarnings('ignore')
 
-
 GAMMA = 0.99 # DISCOUNT RATE
 BATCH_SIZE = 12 #32 # FROM REPLAY BUFFER
 BUFFER_SIZE = 10_000
@@ -28,6 +27,7 @@ LR = 5e-4
 NUM_ENVS = 1
 TARGET_UPDATE_FREQ = 100 // NUM_ENVS
 LOGGING_INTERVAL = 50 # 10
+RESTART_EXE = 5
 
 class DQN(nn.Module):
     def __init__(self, env, save_path, load_path):
@@ -151,10 +151,10 @@ def training_dqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log =
     states = env.reset()
     for _ in range(MIN_REPLAY_SIZE):
         actions = [env.action_space.sample() for _ in range(NUM_ENVS)]  # sample from env randomly
-        new_states, rewards, dones, _ = env.step(actions)
+        new_states, rewards, terminateds, truncateds, infos = env.step(actions)
 
-        for state, action, reward, done, new_state in zip(states, actions, rewards, dones, new_states):
-            transition = (state, action, reward, done, new_state)
+        for state, action, reward, terminated, truncated, new_state in zip(states, actions, rewards, terminateds, truncateds, new_states):
+            transition = (state, action, reward, terminated, truncated, new_state)
             replay_buffer.append(transition)
         states = new_states
 
@@ -172,14 +172,13 @@ def training_dqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log =
             actions = online_net.action(states, epsilon)  # epsilon - random policy now inside .action
 
         # take action
+        new_states, rewards, terminateds, truncateds, infos = env.step(actions)
 
-        new_states, rewards, dones, infos = env.step(actions)
-
-        for state, action, reward, done, new_state, info in zip(states, actions, rewards, dones, new_states, infos):
-            transition = (state, action, reward, done, new_state)
+        for state, action, reward, terminated, truncated, new_state, info in zip(states, actions, rewards, terminateds, truncateds, new_states, infos):
+            transition = (state, action, reward, terminated, truncated, new_state)
             replay_buffer.append(transition)
 
-            if done:
+            if terminated or truncated:
                 info_buffer.append(info['episode'])
                 episode_count += 1
 
@@ -218,7 +217,7 @@ def training_dqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log =
             tb_summary.add_scalar('mean_duration', mean_duration if mean_duration is not None else 0, global_step=step)
             tb_summary.add_scalar('episode_count', episode_count, global_step=step)
 
-            # if step > RESTART_EXE:
-            #     logger.info(f'Episode: {step}\nRestart .exe')
-            #     return -1
+            if step > RESTART_EXE:
+                logger.info(f'Episode: {step}\nRestart .exe')
+                return -1
 
