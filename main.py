@@ -161,5 +161,5 @@ def main_ddqn():
 
 
 if __name__ == "__main__":
-    main_ddqn() #main()
+    main_dqn() #main()
 
