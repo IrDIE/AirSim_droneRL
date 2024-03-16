@@ -21,17 +21,23 @@ MIN_REPLAY_SIZE = 1000
 EPSILON_START = 0.7 # E GREEDY POLICY
 EPSILON_END = 0.02
 EPSILON_DECAY = 1000
+
 LR = 5e-4
+
 NUM_ENVS = 1
-TARGET_UPDATE_FREQ = 600 // NUM_ENVS
+TARGET_UPDATE_FREQ = 500 // NUM_ENVS
 LOGGING_INTERVAL = 30 # 10
 RESTART_EXE = 5
 
-class DQN(nn.Module):
+class Double_Dueling_DQN(nn.Module):
     def __init__(self, env, save_path, load_path):
-        super(DQN, self).__init__()
+        super(Double_Dueling_DQN, self).__init__()
         self.action_shape = env.action_space.n
         self.convNet = self.get_conv_net(env)
+
+        self.dueling_state = self.get_dueling_state()
+        self.dueling_action = self.get_dueling_action()
+
         self.save_path, self.load_path = save_path, load_path
 
         logger.info(f"self.convNet = \n{self.convNet}")
@@ -42,19 +48,26 @@ class DQN(nn.Module):
             logger.info('No best.pt weights, random initialization ...')
 
 
-    def forward(self, x, conv = True):
-        if conv : return self.convNet(x)
-        else :return self.net(x)
+    def forward(self, x):
+        enconed = self.convNet(x)
+        V = self.dueling_state(enconed)
+        A = self.dueling_action(enconed)
+        return V,A
+
 
     def action(self, states, epsilon, inference=False):
         states = torch.tensor(states, dtype=torch.float32)
-        q_values = self.forward(states)
-        max_indexs = torch.argmax(q_values, dim=1)
+
+        _, advantage = self.forward(states) # in online net -> get action advantage
+
+        max_indexs = torch.argmax(advantage, dim=1)
         actions = max_indexs.detach().tolist()
+
         if not inference:
             for i in range(len(actions)):
                 if np.random.random() <= epsilon :
                     actions[i] = np.random.randint(0, self.action_shape - 1)
+
         return actions
 
     def get_convBlock(self, from_ch, to_ch, kernel_size, stride):
@@ -63,11 +76,29 @@ class DQN(nn.Module):
             nn.BatchNorm2d(to_ch),
             nn.ReLU()
         )
+
+    def get_dueling_state(self):
+        return nn.Sequential(
+            nn.Linear(self.outp_size, 128),
+            nn.ReLU(),
+            nn.Linear(128, 1),
+
+        )
+
+    def get_dueling_action(self):
+        return nn.Sequential(
+            nn.Linear(self.outp_size, 128),
+            nn.ReLU(),
+            nn.Linear(128, self.action_shape),
+
+        )
+
     def get_conv_net(self, env, depths = [64,128,64], kernel_size = [8,4,3], stride = [4,2,1], outp_size = 512):
         self.in_channels = list([env.observation_space.shape[0]])
         self.depth = self.in_channels + depths
         self.kernel_size = kernel_size
         self.stride = stride
+        self.outp_size = outp_size
 
         conv_blocks = [self.get_convBlock(from_ch = inp, to_ch = out, kernel_size = kernel_size, stride = stride) \
                        for inp,out, kernel_size, stride in zip(self.depth, self.depth[1:], self.kernel_size, self.stride)
@@ -82,19 +113,18 @@ class DQN(nn.Module):
 
         return nn.Sequential(
             self.convNet,
-            nn.Linear(flatten_size, outp_size ),
-            nn.ReLU(),
-            nn.Linear(outp_size, self.action_shape)
+            nn.Linear(flatten_size, self.outp_size ),
+            nn.ReLU()
         )
 
     def compute_loss(self, target_net, trg):
         # trg - state, action, reward, terminated, truncated, new_state
         states_ = [t[0] for t in trg]
-
         actions = torch.as_tensor(np.asarray([t[1] for t in trg]), dtype=torch.int64).unsqueeze(-1)
         rews = torch.as_tensor(np.asarray([t[2] for t in trg]), dtype=torch.float32).unsqueeze(-1)
         dones = torch.as_tensor(np.asarray([t[3] for t in trg]), dtype=torch.float32).unsqueeze(-1)
         new_states_ = [t[5] for t in trg]
+
         if isinstance(states_[0], PytorchLazyFrames):
             states = torch.as_tensor(np.stack([lazy_frames.get_frames() for lazy_frames in states_]), dtype=torch.float32)
             new_states = torch.as_tensor(np.stack([lazy_frames.get_frames() for lazy_frames in new_states_]), dtype=torch.float32)
@@ -102,12 +132,22 @@ class DQN(nn.Module):
             states = torch.as_tensor(states_, dtype=torch.float32)
             new_states = torch.as_tensor(np.asarray(new_states_), dtype=torch.float32)
 
-        target_q_values = target_net(new_states)
-        max_target_q_values = target_q_values.max(dim=1, keepdim=True)[0]
-        targets = rews + GAMMA * (1 - dones) * max_target_q_values
+        # for double:
+        V_states, A_states = self.forward(states)
+        V_new_states, A_new_states = target_net.forward(new_states)
+
+        V_s_eval, A_s_eval = self.forward(new_states)
+        q_pred = torch.add(V_states,
+             (A_states - A_states.mean(dim=1, keepdim=True))) # action_q_values
+        q_next = torch.add(V_new_states,
+                       (A_new_states - A_new_states.mean(dim=1, keepdim=True)))
+        q_eval = torch.add(V_s_eval, (A_s_eval - A_s_eval.mean(dim=1, keepdim=True)))
+
+        best_q_index = q_eval.argmax(dim=1, keepdim=True) # max_actions
+        targets_selected_q_values = torch.gather(input=q_next, dim = 1, index= best_q_index) # = q_next[indices, max_actions]
+        targets = rews + GAMMA * (1 - dones) * targets_selected_q_values
         # loss
-        q_values = self(states)
-        action_q_values = torch.gather(q_values, dim=1, index=actions)
+        action_q_values = torch.gather(q_pred, dim=1, index=actions)
         loss = smooth_l1_loss(action_q_values, targets)
 
         return loss
@@ -122,11 +162,11 @@ class DQN(nn.Module):
         self.convNet.load_state_dict(torch.load(path))
 
 
-def training_dqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log = 'restart_best_rewards',  load_path = None):
+def training_dddqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log ='restart_best_rewards', load_path = None):
     replay_buffer = deque(maxlen=BUFFER_SIZE)
     info_buffer = deque(maxlen=200)
-    online_net = DQN(env=env, save_path=save_path, load_path = load_path)
-    target_net = DQN(env=env, save_path=save_path, load_path=load_path)
+    online_net = Double_Dueling_DQN(env=env, save_path=save_path, load_path = load_path)
+    target_net = Double_Dueling_DQN(env=env, save_path=save_path, load_path=load_path)
     target_net.load_state_dict(online_net.state_dict())
     optimizer = Adam(lr=LR, params=online_net.parameters())
     tb_summary = SummaryWriter(logg_tb)

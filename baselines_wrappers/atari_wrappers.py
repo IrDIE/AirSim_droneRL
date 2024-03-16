@@ -98,9 +98,9 @@ class MaxAndSkipEnv(gym.Wrapper):
         """Return only every `skip`-th frame"""
         super(MaxAndSkipEnv, self).__init__(env) # gym.Wrapper.__init__(self, env)
         # most recent raw observations (for max pooling across time steps)
-        # self._obs_buffer = np.zeros((2, *env.observation_space.shape), dtype=env.observation_space.dtype) #deque(maxlen=3)
-        self._obs_buffer = np.zeros((1, *env.observation_space.shape),
-                                    dtype=env.observation_space.dtype)  # deque(maxlen=3)
+        self._obs_buffer = np.zeros((2, *env.observation_space.shape), dtype=env.observation_space.dtype) #deque(maxlen=3)
+        # self._obs_buffer = np.zeros((1, *env.observation_space.shape),
+        #                             dtype=env.observation_space.dtype)  # deque(maxlen=3)
         self._skip = skip
 
     def step(self, action):
@@ -110,9 +110,9 @@ class MaxAndSkipEnv(gym.Wrapper):
         truncated = None
         for i in range(self._skip):
             obs, reward, terminated, truncated, info = self.env.step(action) #observation, reward, terminated, truncated, info
-            # if i == self._skip - 2: self._obs_buffer[0] = obs
-            # if i == self._skip - 1: self._obs_buffer[1] = obs
-            if i == self._skip - 1: self._obs_buffer[0] = obs
+            if i == self._skip - 2: self._obs_buffer[0] = obs
+            if i == self._skip - 1: self._obs_buffer[1] = obs
+            # if i == self._skip - 1: self._obs_buffer[0] = obs
             total_reward += reward
             if terminated or truncated:
                 break
@@ -121,8 +121,8 @@ class MaxAndSkipEnv(gym.Wrapper):
 
         # self._obs_buffer[1].shape = (360, 640, 3)
         # logger.info(f'self._obs_buffer.shape = {self._obs_buffer.shape}')
-        # max_frame = self._obs_buffer.max(axis=0) #  contains some temporal information
-        max_frame = self._obs_buffer[0]
+        max_frame = self._obs_buffer.max(axis=0) #  contains some temporal information
+        #max_frame = self._obs_buffer[0]
         return max_frame, total_reward, terminated, truncated, info
 
 

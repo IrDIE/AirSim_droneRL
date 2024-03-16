@@ -24,7 +24,7 @@ from random import sample
 ActType = TypeVar("ActType")
 ObsType = TypeVar("ObsType")
 
-RESCALE_N = 2
+RESCALE_N = 1
 RANDOM_SEED = 42
 
 
@@ -74,14 +74,35 @@ class AirSimGym_env(Env):
         if action == 5: self.move_down()
 
         observation = self.get_observation()
-        reward, terminated, truncated = self.compute_reward()  # TODO - define rewarn calculation function
         info = self._get_info()
-        if action == 1: reward += 0.8
-        if action == 4 and reward != -10: reward = -0.1
 
-        return observation, reward, terminated, truncated, info # observation, reward, terminated, truncated, info
+        #reward, terminated, truncated = self.compute_reward()  # TODO - define rewarn calculation function
+        # <-----from------
+        if_collision = self.client.simGetCollisionInfo(vehicle_name=self.vehicle_name).has_collided
+        truncated = False
+        terminated = False
+        reward = 0
+        if if_collision:
+            reward = -10
+            terminated = True
+            return observation, reward, terminated, truncated, info
+        out_of_env = False
+        if self.done_xy is not None:
+            out_of_env = self.check_if_out_of_env()
+        terminated = False if not out_of_env else True
+        if action == 1: reward = 0.15
+        return observation, reward, terminated, truncated, info
 
-    # <------------------------
+        # <---- to -------
+
+
+        #
+        # if action == 1 and not terminated: reward += 1
+        # if action == 4 and not terminated: reward = -0.05
+        #
+        # return observation, reward, terminated, truncated, info # observation, reward, terminated, truncated, info
+
+
     def get_yaw(self):
         quaternions = self.client.getMultirotorState().kinematics_estimated.orientation
         a, b, yaw_rad = to_eularian_angles(quaternions)
@@ -205,8 +226,9 @@ class AirSimGym_env(Env):
         raise NotImplementedError("compute_reward_indoor Not Implemented")
     def compute_reward(self):
         if_collision = self.client.simGetCollisionInfo(vehicle_name=self.vehicle_name).has_collided
+
         out_of_env = False
-        terminated = False
+
         truncated = False
 
         if self.done_xy is not None:
@@ -280,6 +302,7 @@ class AirSimGym_env(Env):
             depth_map_heat = cmap(raw_observation)[:, :, :3] # already normalized from 0 to 1
             image_scaled = cv2.resize(depth_map_heat,
                                             (depth_map_heat.shape[1] * RESCALE_N, depth_map_heat.shape[0] * RESCALE_N))
+
         else:
             mono_image = raw_observation # already normalized from 0 to 1
             image_scaled = cv2.resize(mono_image,
