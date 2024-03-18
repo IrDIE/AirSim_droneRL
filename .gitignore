@@ -5,3 +5,4 @@ saved_weights/*
 venv_anaconda
 .idea*
 old_logs_dqn
+
