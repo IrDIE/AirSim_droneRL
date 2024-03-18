@@ -6,13 +6,20 @@ from dotmap import DotMap
 import numpy as np
 import cv2
 
-def generate_json(cfg, initial_positions):
+def generate_json(cfg, initial_positions, documents_path = '~\Documents'):
+    """
+
+    :param cfg:
+    :param initial_positions:
+    :param documents_path: Win11 = documents_path = '../../../../../Documents'
+    :return:
+    """
     flag  = True
-    path = os.path.expanduser('~\Documents\Airsim')
+    path = os.path.expanduser(f"{documents_path}/AirSim")
     if not os.path.exists(path):
         os.makedirs(path)
 
-    filename = path + '\settings.json'
+    filename = path + '/settings.json'
 
     data = {}
 
@@ -28,6 +35,77 @@ def generate_json(cfg, initial_positions):
         PawnPaths["DefaultQuadrotor"] = {}
         PawnPaths["DefaultQuadrotor"]['PawnBP'] = ''' Class'/AirSim/Blueprints/BP_''' + cfg.drone + '''.BP_''' + cfg.drone + '''_C' '''
         data['PawnPaths']=PawnPaths
+
+
+        Vehicles = {}
+
+        for agents in range(cfg.num_agents):
+            name_agent = "drone" + str(agents)
+            agent_position = initial_positions
+            Vehicles[name_agent] = {}
+            Vehicles[name_agent]["VehicleType"] = "SimpleFlight" # PhysXCar, SimpleFlight, PX4Multirotor, ComputerVision, ArduCopter & ArduRover
+            Vehicles[name_agent]["X"] = agent_position[0]
+            Vehicles[name_agent]["Y"] = agent_position[1]
+            Vehicles[name_agent]["Z"] = agent_position[2]
+            #Vehicles[name_agent]["Z"] = 0
+            Vehicles[name_agent]["Yaw"] = agent_position[3]
+        data["Vehicles"] = Vehicles
+
+        CameraDefaults = {}
+        CameraDefaults['CaptureSettings']=[]
+        # CaptureSettings=[]
+
+        camera = {}
+        camera['ImageType'] = 0
+        camera['Width'] = cfg.width
+        camera['Height'] = cfg.height
+        camera['FOV_Degrees'] = cfg.fov_degrees
+
+        CameraDefaults['CaptureSettings'].append(camera)
+
+        camera = {}
+        camera['ImageType'] = 3
+        camera['Width'] = cfg.width
+        camera['Height'] = cfg.height
+        camera['FOV_Degrees'] = cfg.fov_degrees
+
+        CameraDefaults['CaptureSettings'].append(camera)
+
+        data['CameraDefaults'] = CameraDefaults
+    with open(filename, 'w') as outfile:
+        json.dump(data, outfile, indent=4)
+
+    return flag
+
+def generate_json_simple_maze(cfg, initial_positions, documents_path = '~\Documents'):
+    """
+
+    :param cfg:
+    :param initial_positions:
+    :param documents_path: Win11 = documents_path = '../../../../../Documents'
+    :return:
+    """
+    flag  = True
+    path = os.path.expanduser(f"{documents_path}/AirSim")
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+    filename = path + '/settings.json'
+
+    data = {}
+
+    if cfg.mode == 'move_around':
+        data['SimMode'] = 'ComputerVision'
+    else:
+        data['SettingsVersion'] = 1.2
+        data['LocalHostIp'] = cfg.ip_address
+        data['SimMode'] = cfg.SimMode
+        data['ClockSpeed'] = cfg.ClockSpeed
+        data["ViewMode"]= "NoDisplay"
+        # PawnPaths = {}
+        # PawnPaths["DefaultQuadrotor"] = {}
+        # PawnPaths["DefaultQuadrotor"]['PawnBP'] = ''' Class'/AirSim/Blueprints/BP_''' + cfg.drone + '''.BP_''' + cfg.drone + '''_C' '''
+        # data['PawnPaths']=PawnPaths
 
 
         Vehicles = {}

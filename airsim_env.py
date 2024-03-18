@@ -11,7 +11,7 @@ from baselines_wrappers.atari_wrappers import MaxAndSkipEnv, ClipRewardEnv
 from baselines_wrappers.wrappers import TimeLimit
 
 from airsim import MultirotorClient
-import matplotlib.pyplot as plt
+from  matplotlib.pyplot import get_cmap
 import airsim
 from utils.pytorch_wrappers import TransposeImageObs
 import time
@@ -254,10 +254,11 @@ class AirSimGym_env(Env):
         if seed is None:
             np.random.seed(RANDOM_SEED)
             self.np_random = np.random.default_rng()
-        reset_height = [*sample(self.height_airsim_restart_positions, 1)][0]
+
         # select random pose from inital posinion and generate z
         x, y, angle = [*sample(self.initial_positions, 1)][0]
         if self.env_type == 'outdoor':
+            reset_height = [*sample(self.height_airsim_restart_positions, 1)][0]
             # define some params for reward calculation
             self.start_point = (x,y)
             min_x, max_x = self.done_xy[0]
@@ -268,9 +269,11 @@ class AirSimGym_env(Env):
             self.max_distance_xy = math.sqrt((x_max_possible*x_max_possible) + (y_max_possible*y_max_possible))
             # logger.info(f'self.max_distance_xy = {self.max_distance_xy}')
 
-        reset_pos = airsim.Pose(airsim.Vector3r(x, y, reset_height),
-                               airsim.to_quaternion(0, 0, (angle)*(sample([+1, -1], 1)[0])*np.pi/180))
+            reset_pos = airsim.Pose(airsim.Vector3r(x, y, reset_height),
+                                   airsim.to_quaternion(0, 0, (angle)*(sample([+1, -1], 1)[0])*np.pi/180))
 
+        elif self.env_type == 'indoor':
+            pass
         self.client.simSetVehiclePose( reset_pos, ignore_collison=True, vehicle_name=self.vehicle_name)
         self.client.moveByVelocityAsync(0, 0, 0, 1, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False)).join()
         logger.info('in reset')
@@ -298,7 +301,7 @@ class AirSimGym_env(Env):
 
         raw_observation = self.get_raw_observ(depth = self.observation_as_depth)
         if self.observation_as_depth:
-            cmap = plt.get_cmap('jet')
+            cmap = get_cmap('jet')
             depth_map_heat = cmap(raw_observation)[:, :, :3] # already normalized from 0 to 1
             image_scaled = cv2.resize(depth_map_heat,
                                             (depth_map_heat.shape[1] * RESCALE_N, depth_map_heat.shape[0] * RESCALE_N))
