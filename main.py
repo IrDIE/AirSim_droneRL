@@ -8,7 +8,7 @@ from baselines_wrappers.monitor import Monitor
 from baselines_wrappers.dummy_vec_env import DummyVecEnv
 from airsim_env import AirSimGym_env, make_airsim_deepmind
 from utils.pytorch_wrappers import BatchedPytorchFrameStack, PytorchLazyFrames
-from utils.utils import read_cfg, visualize_observation, create_folder
+from utils.utils import read_cfg, generate_json_simple_maze, visualize_observation, create_folder, load_save_logg_reward
 from unreal_envs.initial_positions import get_airsim_position
 from agents.dqn import *
 from agents.double_dqn import *
@@ -35,14 +35,14 @@ def connect_drone(ip_address='127.0.0.5', num_agents=1, client=[]):
     client.confirmConnection()
     time.sleep(0.1)
 
-    old_posit = {}
+
     for agents in range(num_agents):
         name_agent = "drone" + str(agents)
         client.enableApiControl(True, name_agent)
         client.armDisarm(True, name_agent)
         client.takeoffAsync(vehicle_name=name_agent).join()
         time.sleep(0.1)
-        old_posit[name_agent] = client.simGetVehiclePose(vehicle_name=name_agent)
+
     return client
 
 
@@ -51,6 +51,7 @@ def connect_exe_env(exe_path="./unreal_envs/outdoor_courtyard/outdoor_courtyard.
     cfg.num_agents = 1
     restart_positions, airsim_positions_raw, done_xy = get_airsim_position(name='outdoor_courtyard')
     generate_json(cfg, initial_positions=airsim_positions_raw)
+
     env_process = start_environment(exe_path)
     client = connect_drone()  # first takeoff
 
@@ -64,7 +65,47 @@ def connect_exe_env(exe_path="./unreal_envs/outdoor_courtyard/outdoor_courtyard.
 
     return env, env_process
 
+def connect_indoor_simple_env(exe_path="./unreal_envs/easy_maze/Blocks.exe"):
+    cfg = read_cfg(config_filename='./configs/config.cfg', verbose=False)
+    cfg.num_agents = 1
+    restart_positions, airsim_positions_raw, done_xy = get_airsim_position(name='indoor_maze_easy')
 
+    generate_json_simple_maze(cfg, initial_positions=airsim_positions_raw, documents_path = '../../../../../Documents')
+
+    env_process = start_environment(exe_path)
+
+    client = connect_drone()  # first takeoff
+    time.sleep(5)
+    logger.info(f"client.simGetVehiclePose() = {client.simGetVehiclePose()}")
+    time.sleep(5)
+
+
+    # reset start position^
+    """
+    <Pose> {   'orientation': <Quaternionr> {   'w_val': 0.7071061134338379,
+    'x_val': -0.0,
+    'y_val': 0.0,
+    'z_val': 0.7071074843406677},
+    'position': <Vector3r> {   'x_val': 0.0,
+    'y_val': 0.0,
+    'z_val': 1.2149279117584229}}
+    """
+    reset_pos = airsim.Pose(airsim.Vector3r(0, 0, -0.783170759677887),
+                                   airsim.to_quaternion(0, 0, 0))
+    client.simSetVehiclePose(reset_pos, ignore_collison=True, vehicle_name='')
+
+
+
+    #
+    # env_airsim = AirSimGym_env(client, env_type='outdoor', vehicle_name='drone0', action_type='discrete',
+    #                            initial_positions=restart_positions, observation_as_depth=True, done_xy=done_xy)
+    # make_env = lambda: Monitor(make_airsim_deepmind(env_airsim, max_episode_steps=200),
+    #                            allow_early_resets=True)
+    # # set batched environment
+    # vec_env = DummyVecEnv([make_env for _ in range(NUM_ENVS)])
+    # env = BatchedPytorchFrameStack(vec_env, k=2)
+
+    return env_process #env, env_process
 def inference_setup(env):
     load_path = './saved_weights/dueling_ddqn2/restart_5/'  # <------- change here
     online_net = Double_Dueling_DQN(env=env, save_path=load_path, load_path=load_path) # <------- change here
@@ -210,5 +251,16 @@ def main_dddqn():
         time.sleep(5)
 
 
+def test_maze():
+    env_process = connect_indoor_simple_env()
+
+    close_env(env_process)
+
+
 if __name__ == "__main__":
-    inference()  # main()
+
+    test_maze()
+
+    #inference()  # main()
+
+
