@@ -30,7 +30,7 @@ RANDOM_SEED = 42
 
 class AirSimGym_env(Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
-    def __init__(self, client : MultirotorClient, env_type, vehicle_name, initial_positions, observation_as_depth,done_xy=None, max_yaw_or_rate = 90, action_type = 'discrete'):
+    def __init__(self, client : MultirotorClient, env_type, vehicle_name, initial_positions, observation_as_depth,height_airsim_restart_positions, done_xy=None, max_yaw_or_rate = 90, action_type = 'discrete'):
         super().__init__()
         self.observation_as_depth = observation_as_depth
         self.client = client
@@ -51,9 +51,9 @@ class AirSimGym_env(Env):
         self.observation_space = Box(
             low=0., high=1., shape=self.observation_shape, dtype=np.float32 # 3 channels
         )
-        self.height_airsim_restart_positions = [-5.35,-5.4, -6.5,-7.6,-8.5, -9. ]
+        self.height_airsim_restart_positions = height_airsim_restart_positions # [-5.35,-5.4, -6.5,-7.6,-8.5, -9. ] # restart height -- depends on environment
         self.reward_range = None
-        self.initial_positions = initial_positions #self.client.simGetVehiclePose(vehicle_name=self.vehicle_name)
+        self.initial_positions = initial_positions # select random pose from inital posinionы for outdoor or indoor
 
     def step_discrete(self, action):
         if type(action) == int and action == self.noop_action: # == if action == 0: pass
@@ -81,26 +81,26 @@ class AirSimGym_env(Env):
         if_collision = self.client.simGetCollisionInfo(vehicle_name=self.vehicle_name).has_collided
         truncated = False
         terminated = False
+        out_of_env = False
         reward = 0
         if if_collision:
             reward = -10
             terminated = True
             return observation, reward, terminated, truncated, info
-        out_of_env = False
+
         if self.done_xy is not None:
             out_of_env = self.check_if_out_of_env()
         terminated = False if not out_of_env else True
-        if action == 1: reward = 0.15
+        if self.env_type == 'indoor':
+            if action in [2,3,4,5]:
+                reward = 0.08
+            if action == 1:
+                reward = 0.1
+        else:
+            if action == 1: reward = 0.15
+
         return observation, reward, terminated, truncated, info
 
-        # <---- to -------
-
-
-        #
-        # if action == 1 and not terminated: reward += 1
-        # if action == 4 and not terminated: reward = -0.05
-        #
-        # return observation, reward, terminated, truncated, info # observation, reward, terminated, truncated, info
 
 
     def get_yaw(self):
@@ -187,7 +187,7 @@ class AirSimGym_env(Env):
 
     def check_if_out_of_env(self):
         position = self.client.simGetVehiclePose().position
-        x_current, y_current , z_current= position.x_val, position.y_val, position.z_val
+        x_current, y_current, z_current= position.x_val, position.y_val, position.z_val
         if z_current < -9.5:
             return True
         min_x, max_x = self.done_xy[0]
@@ -257,27 +257,24 @@ class AirSimGym_env(Env):
 
         # select random pose from inital posinion and generate z
         x, y, angle = [*sample(self.initial_positions, 1)][0]
+        reset_height = [*sample(self.height_airsim_restart_positions, 1)][0]
         if self.env_type == 'outdoor':
-            reset_height = [*sample(self.height_airsim_restart_positions, 1)][0]
             # define some params for reward calculation
             self.start_point = (x,y)
             min_x, max_x = self.done_xy[0]
             min_y, max_y = self.done_xy[1]
-
             x_max_possible = max(abs( min_x - x), abs(max_x-x)) # x_max_possible distance from strart point
             y_max_possible = max(abs(min_y - y), abs(max_y - y))  # y_max_possible distance from strart point
             self.max_distance_xy = math.sqrt((x_max_possible*x_max_possible) + (y_max_possible*y_max_possible))
             # logger.info(f'self.max_distance_xy = {self.max_distance_xy}')
+        reset_pos = airsim.Pose(airsim.Vector3r(x, y, reset_height),
+                               airsim.to_quaternion(0, 0, (angle)*np.pi/180))
 
-            reset_pos = airsim.Pose(airsim.Vector3r(x, y, reset_height),
-                                   airsim.to_quaternion(0, 0, (angle)*(sample([+1, -1], 1)[0])*np.pi/180))
 
-        elif self.env_type == 'indoor':
-            pass
         self.client.simSetVehiclePose( reset_pos, ignore_collison=True, vehicle_name=self.vehicle_name)
         self.client.moveByVelocityAsync(0, 0, 0, 1, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False)).join()
         logger.info('in reset')
-        time.sleep(0.05)
+        time.sleep(0.03)
         observation = self.get_observation()
         info = self._get_info()
         return observation, info
@@ -340,35 +337,35 @@ def get_DepthImageRGB(client, vehicle_name, env_type):
     max_tries = 6
     tries = 0
     correct = False
-    if env_type == 'indoor':
+    # if env_type == 'indoor':
+    #
+    #     while not correct and tries < max_tries: # TODO - chech how it will work for indoor environment
+    #         tries += 1
+    #         responses = client.simGetImages(
+    #             [airsim.ImageRequest(camera_name, airsim.ImageType.DepthVis, False, False)],
+    #             vehicle_name=vehicle_name)[0]
+    #         img1d = np.fromstring(responses.image_data_uint8, dtype=np.uint8)
+    #         # AirSim bug: Sometimes it returns invalid depth map with a few 255 and all 0s
+    #         if np.max(img1d) == 255 and np.mean(img1d) < 0.05:
+    #             correct = False
+    #         else:
+    #             correct = True
+    #
+    #     depth = img1d.reshape(responses.height, responses.width, 3)[:, :, 0]
+    # elif env_type == 'outdoor':
+    while not correct and tries < max_tries: # TODO - chech how it will work for indoor environment
+        tries += 1
+        responses = client.simGetImages([airsim.ImageRequest(camera_name, airsim.ImageType.DepthVis, True)],
+                                             vehicle_name=vehicle_name)
+        responses = responses[0]
+        if responses.width == 0:
+            logger.info(f'\n /// BUG ***\n')
+            logger.info(f'responses =BUG= {responses}')
+            logger.info(f'responses.width, responses.height = {responses.width, responses.height}')
 
-        while not correct and tries < max_tries: # TODO - chech how it will work for indoor environment
-            tries += 1
-            responses = client.simGetImages(
-                [airsim.ImageRequest(camera_name, airsim.ImageType.DepthVis, False, False)],
-                vehicle_name=vehicle_name)[0]
-            img1d = np.fromstring(responses.image_data_uint8, dtype=np.uint8)
-            # AirSim bug: Sometimes it returns invalid depth map with a few 255 and all 0s
-            if np.max(img1d) == 255 and np.mean(img1d) < 0.05:
-                correct = False
-            else:
-                correct = True
-
-        depth = img1d.reshape(responses.height, responses.width, 3)[:, :, 0]
-    elif env_type == 'outdoor':
-        while not correct and tries < max_tries: # TODO - chech how it will work for indoor environment
-            tries += 1
-            responses = client.simGetImages([airsim.ImageRequest(camera_name, airsim.ImageType.DepthVis, True)],
-                                                 vehicle_name=vehicle_name)
-            responses = responses[0]
-            if responses.width == 0:
-                logger.info(f'\n /// BUG ***\n')
-                logger.info(f'responses =BUG= {responses}')
-                logger.info(f'responses.width, responses.height = {responses.width, responses.height}')
-
-            depth = airsim.list_to_2d_float_array(responses.image_data_float, responses.width, responses.height)
-            if responses.width == 320:
-                correct = True
+        depth = airsim.list_to_2d_float_array(responses.image_data_float, responses.width, responses.height)
+        if responses.width == 320:
+            correct = True
 
     return depth
 

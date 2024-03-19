@@ -31,10 +31,6 @@ def generate_json(cfg, initial_positions, documents_path = '~\Documents'):
         data['SimMode'] = cfg.SimMode
         data['ClockSpeed'] = cfg.ClockSpeed
         data["ViewMode"]= "NoDisplay"
-        PawnPaths = {}
-        PawnPaths["DefaultQuadrotor"] = {}
-        PawnPaths["DefaultQuadrotor"]['PawnBP'] = ''' Class'/AirSim/Blueprints/BP_''' + cfg.drone + '''.BP_''' + cfg.drone + '''_C' '''
-        data['PawnPaths']=PawnPaths
 
 
         Vehicles = {}

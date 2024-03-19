@@ -1,4 +1,4 @@
-numpy==1.26.4
+numpy>=1.22
 pandas
 loguru==0.7.2
 cloudpickle==2.2.1
@@ -6,9 +6,9 @@ dotmap==1.3.30
 matplotlib
 msgpack-rpc-python
 opencv_python==4.8.0.74
-airsim==1.8.1
+airsim==1.3.0
 Pillow==9.2.0
 psutil==5.9.2
-torch==2.0.1
-gymnasium==0.29.1
+torch>=2.0.1
+gymnasium>=0.29.1
 tensorboard==2.10.1
