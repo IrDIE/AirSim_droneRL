@@ -43,7 +43,7 @@ def connect_drone(ip_address='127.0.0.5', num_agents=1, client=[]):
         name_agent = "drone" + str(agents)
         client.enableApiControl(True, name_agent)
         client.armDisarm(True, name_agent)
-        client.takeoffAsync(vehicle_name=name_agent).join()
+        client.takeoffAsync(vehicle_name=name_agent)
         time.sleep(0.1)
 
     return client
@@ -158,7 +158,7 @@ def train_outroor_DDQN(logg_tb, save_path, epoch, reward_loggs, height_airsim_re
 
 def train_outroor_DDDQN(logg_tb, save_path, epoch, reward_loggs, height_airsim_restart_positions = [-5.35,-5.4, -6.5,-7.6,-8.5, -9. ],load_path=None):
     env, env_process = connect_exe_env(height_airsim_restart_positions, env_type='indoor', max_episode_steps=100,
-                                       exe_path="./unreal_envs/easy_maze/Blocks.exe",
+                                       exe_path="./unreal_envs/normal_maze/Normal/Blocks.exe",
                                        name='indoor_maze_easy')
     res = 0
     try:
@@ -173,6 +173,7 @@ def train_outroor_DDDQN(logg_tb, save_path, epoch, reward_loggs, height_airsim_r
     except Exception as restart:
         logger.info(f'API is dead... \n{str(restart)}\nClose .exe ')
         close_env(env_process)
+        # if str(restart) != 'Request timed out' :
         res = -2
 
     return res
@@ -274,7 +275,7 @@ def try_maze():
 
 if __name__ == "__main__":
 
-    try_maze()
+    main_dddqn()
 
     #inference()  # main()
 

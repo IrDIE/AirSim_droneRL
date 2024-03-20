@@ -56,6 +56,7 @@ class AirSimGym_env(Env):
         self.initial_positions = initial_positions # select random pose from inital posinionы for outdoor or indoor
 
     def step_discrete(self, action):
+        self.client.simPause(False)
         if type(action) == int and action == self.noop_action: # == if action == 0: pass
             pass
         # forward
@@ -72,7 +73,7 @@ class AirSimGym_env(Env):
 
         # down
         if action == 5: self.move_down()
-
+        self.client.simPause(True)
         observation = self.get_observation()
         info = self._get_info()
 
@@ -84,6 +85,7 @@ class AirSimGym_env(Env):
         out_of_env = False
         reward = 0
         if if_collision:
+            logger.info(f'COLLISION')
             reward = -10
             terminated = True
             return observation, reward, terminated, truncated, info
@@ -115,37 +117,37 @@ class AirSimGym_env(Env):
         # need rad
         vx = math.cos(yaw_rad) * 0.05
         vy = math.sin(yaw_rad) * 0.05
-        self.client.moveByVelocityAsync(vx , vy , 0, 1, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False)).join()
+        self.client.moveByVelocityAsync(vx , vy , 0, 1, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False))
 
 
     def rotate_left(self):
         yaw_deg, yaw_rad = self.get_yaw()
         z = self.client.simGetGroundTruthKinematics().position.z_val
         yaw_rad -= math.radians(10)
-        self.client.moveByVelocityAsync(0, 0, 0, 1, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False)).join()
-        self.client.moveByAngleZAsync(0,0,z,yaw_rad,1).join()
+        self.client.moveByVelocityAsync(0, 0, 0, 1, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False))
+        self.client.moveByAngleZAsync(0,0,z,yaw_rad,1)
 
 
     def rotate_right(self):
         yaw_deg, yaw_rad = self.get_yaw()
         yaw_rad += math.radians(10)
         z = self.client.simGetGroundTruthKinematics().position.z_val
-        self.client.moveByVelocityAsync(0, 0, 0, 1, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False)).join()
-        self.client.moveByAngleZAsync(0,0,z,yaw_rad,1).join()
+        self.client.moveByVelocityAsync(0, 0, 0, 1, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False))
+        self.client.moveByAngleZAsync(0,0,z,yaw_rad,1)
 
 
     def move_up(self):
         linear_velocity = self.client.simGetGroundTruthKinematics().linear_velocity
         x,y, z = linear_velocity.x_val, linear_velocity.y_val, linear_velocity.z_val
         z -= 0.007
-        self.client.moveByVelocityAsync(x, y, z, 1, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False)).join()
+        self.client.moveByVelocityAsync(x, y, z, 1, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False))
         time.sleep(0.01)
     def move_down(self):
         linear_velocity = self.client.simGetGroundTruthKinematics().linear_velocity
         x, y, z = linear_velocity.x_val, linear_velocity.y_val, linear_velocity.z_val
         z += 0.007
         self.client.moveByVelocityAsync(x, y, z , 1, airsim.DrivetrainType.ForwardOnly,
-                                        airsim.YawMode(False)).join()
+                                        airsim.YawMode(False))
         time.sleep(0.01)
 
     # <---------
@@ -161,11 +163,12 @@ class AirSimGym_env(Env):
             vx, vy, vz, yaw_or_rate = action
             yaw_or_rate = (yaw_or_rate) * self.max_yaw_or_rate
             start = time.time()
+
             self.client.moveByVelocityAsync(vx=float(vx), vy=float(vy), vz=float(vz), duration=1,
                                             drivetrain=airsim.DrivetrainType.MaxDegreeOfFreedom,
                                             yaw_mode=airsim.YawMode(is_rate=self.is_rate,
                                                                     yaw_or_rate=float(yaw_or_rate)),
-                                            vehicle_name=self.vehicle_name).join()
+                                            vehicle_name=self.vehicle_name)
 
             # for i in range(3):
             #     logger.info(f'\n*{i} in step **\n{self._get_info(get_kinematic=True)}')
@@ -177,6 +180,7 @@ class AirSimGym_env(Env):
         return observation, reward, done, info
 
     def step(self, action):
+
         if self.action_type == 'discrete':
             return self.step_discrete(action)
 
@@ -251,11 +255,13 @@ class AirSimGym_env(Env):
 
     def reset(self, seed=None, options=None, level = 0):
         self.client.confirmConnection()
+        # self.client.enableApiControl(True, self.vehicle_name)
         if seed is None:
             np.random.seed(RANDOM_SEED)
             self.np_random = np.random.default_rng()
 
         # select random pose from inital posinion and generate z
+
         x, y, angle = [*sample(self.initial_positions, 1)][0]
         reset_height = [*sample(self.height_airsim_restart_positions, 1)][0]
         if self.env_type == 'outdoor':
@@ -270,12 +276,13 @@ class AirSimGym_env(Env):
         reset_pos = airsim.Pose(airsim.Vector3r(x, y, reset_height),
                                airsim.to_quaternion(0, 0, (angle)*np.pi/180))
 
-
+        time.sleep(0.1)
         self.client.simSetVehiclePose( reset_pos, ignore_collison=True, vehicle_name=self.vehicle_name)
-        self.client.moveByVelocityAsync(0, 0, 0, 1, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False)).join()
-        logger.info('in reset')
-        time.sleep(0.03)
+        self.client.hoverAsync().join()
+        logger.info(f'in reset {reset_pos}')
+
         observation = self.get_observation()
+        time.sleep(0.1)
         info = self._get_info()
         return observation, info
 
@@ -334,7 +341,7 @@ def close_env(env_process):
 
 def get_DepthImageRGB(client, vehicle_name, env_type):
     camera_name = 1
-    max_tries = 6
+    max_tries = 15
     tries = 0
     correct = False
     # if env_type == 'indoor':
