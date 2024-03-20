@@ -15,9 +15,9 @@ from utils.pytorch_wrappers import PytorchLazyFrames
 warnings.filterwarnings('ignore')
 
 GAMMA = 0.99 # DISCOUNT RATE
-BATCH_SIZE = 16 #32 # FROM REPLAY BUFFER
+BATCH_SIZE = 32 #32 # FROM REPLAY BUFFER
 BUFFER_SIZE = 10_000
-MIN_REPLAY_SIZE = 1000
+MIN_REPLAY_SIZE = 100 #1000
 EPSILON_START = 0.7 # E GREEDY POLICY
 EPSILON_END = 0.02
 EPSILON_DECAY = 1000
@@ -26,8 +26,8 @@ LR = 5e-4
 
 NUM_ENVS = 1
 TARGET_UPDATE_FREQ = 500 // NUM_ENVS
-LOGGING_INTERVAL = 30 # 10
-RESTART_EXE = 5
+LOGGING_INTERVAL = 10 #30 #
+RESTART_EXE = 1000
 
 class Double_Dueling_DQN(nn.Module):
     def __init__(self, env, save_path, load_path):
@@ -175,7 +175,8 @@ def training_dddqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log
 
     # init replay buffer before training
     states = env.reset()
-    for _ in range(MIN_REPLAY_SIZE):
+    for i in range(MIN_REPLAY_SIZE):
+        logger.info(f'replay {i}')
         actions = [env.action_space.sample() for _ in range(NUM_ENVS)]  # sample from env randomly
         new_states, rewards, terminateds, truncateds, infos = env.step(actions)
 
@@ -186,6 +187,7 @@ def training_dddqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log
 
     # main training loop
     states = env.reset()
+    logger.info(f'\n***\nFinish collect buffer. Start main training....')
 
     last_rew = -10.
     for step in itertools.count():
@@ -243,7 +245,7 @@ def training_dddqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log
             tb_summary.add_scalar('mean_duration', mean_duration if mean_duration is not None else 0, global_step=step)
             tb_summary.add_scalar('episode_count', episode_count, global_step=step)
 
-            # if step > RESTART_EXE:
-            #     logger.info(f'Episode: {step}\nRestart .exe')
-            #     return -1
+            if step > RESTART_EXE:
+                logger.info(f'Episode: {step}\nRestart .exe')
+                return -1
 
