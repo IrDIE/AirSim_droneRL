@@ -245,12 +245,27 @@ def try_maze():
     logger.info(f'env created')
     logger.info(f'step 0')
 
+    env.step([4])
+
+
     env.step([5])
-    env.step([3])
+    env.step([5])
+
+    env.step([4])
+    env.step([4])
+
     env.step([2])
-    env.step([4])
-    env.step([4])
-    env.step([4])
+    env.step([1])
+    env.step([1])
+    env.step([1])
+    env.step([1])
+    env.step([1])
+    env.step([3])
+
+    env.step([1])
+    env.step([1])
+    env.step([1])
+    env.step([1])
     env.step([1])
     env.step([1])
     env.step([1])
@@ -263,7 +278,7 @@ def try_maze():
 
 if __name__ == "__main__":
 
-    try_maze() #main_dddqn()
+    main_dddqn()
 
     #inference(height_airsim_restart_positions= [-0.8339])  # main()
 

@@ -27,6 +27,9 @@ ObsType = TypeVar("ObsType")
 RESCALE_N = 1
 RANDOM_SEED = 42
 COLLISION_REWARD = -2
+clock_speed = 10 # in cfg
+ACTION_DURATION = 1 / clock_speed
+
 
 class AirSimGym_env(Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
@@ -86,7 +89,7 @@ class AirSimGym_env(Env):
         info = self._get_info()
 
         reward, terminated, truncated = self.compute_reward_maze()  # TODO - define rewarn calculation function
-        logger.info(f'action = {action},reward = {reward}')
+        #logger.info(f'action = {action},reward = {reward}')
         if action ==1: reward += 0.1
 
         return observation, reward, terminated, truncated, info
@@ -97,6 +100,7 @@ class AirSimGym_env(Env):
         out_of_env = False
         reward = 0
         y_current = 0
+        min_speed = 0.2
         levels = [7,17,28,45,57]
 
         if_collision = self.client.simGetCollisionInfo(vehicle_name=self.vehicle_name).has_collided
@@ -111,7 +115,8 @@ class AirSimGym_env(Env):
             return reward, terminated, truncated
 
         speed_current = np.linalg.norm(vel)
-        min_speed = 0.2
+        #logger.info(f'speed_current={speed_current}')
+
 
         if position.y_val > levels[self.level]:
             self.level +=1
@@ -119,7 +124,7 @@ class AirSimGym_env(Env):
         elif speed_current < min_speed:
             reward = -0.05
         else:
-            reward = float(vel[1]) * 0.1 # y-positive velocity
+            reward = float(vel[1]) * 0.5 # y-positive velocity
 
 
         if self.done_xy is not None:
@@ -139,9 +144,10 @@ class AirSimGym_env(Env):
         yaw_deg, yaw_rad = self.get_yaw()
         z = self.client.simGetGroundTruthKinematics().position.z_val
         # need rad
-        vx = math.cos(yaw_rad) * 0.05
-        vy = math.sin(yaw_rad) * 0.05
-        self.client.moveByVelocityAsync(vx , vy , 0, 2, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False))#.join()
+        vx = math.cos(yaw_rad) * 0.25
+        vy = math.sin(yaw_rad) * 0.25
+        #logger.info(f'vx={vx}, vy={vy}')
+        self.client.moveByVelocityAsync(vx , vy , 0, ACTION_DURATION, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False))#.join()
 
 
 
@@ -164,17 +170,20 @@ class AirSimGym_env(Env):
     def move_up(self):
         linear_velocity = self.client.simGetGroundTruthKinematics().linear_velocity
         x, y, z = linear_velocity.x_val, linear_velocity.y_val, linear_velocity.z_val
-        z -= 0.01
-        self.client.moveByVelocityAsync(x, y, z, 2, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False))#.join()
-        #self.client.moveByVelocityAsync(0, 0, 0, 1, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False)).join()
+        z -= 0.02
+
+        self.client.moveByVelocityAsync(x, y, z, ACTION_DURATION, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False))#.join()
+        #self.client.moveByVelocityAsync(0, 0, 0, ACTION_DURATION, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False))#.join()
+        #
 
     def move_down(self):
         linear_velocity = self.client.simGetGroundTruthKinematics().linear_velocity
         x, y, z = linear_velocity.x_val, linear_velocity.y_val, linear_velocity.z_val
-        z += 0.01
-        self.client.moveByVelocityAsync(x, y, z , 2, airsim.DrivetrainType.ForwardOnly,
-                                        airsim.YawMode(False))#.join()
-        #self.client.moveByVelocityAsync(0, 0, 0, 1, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False)).join()
+        z += 0.009
+
+        self.client.moveByVelocityAsync(x, y, z , ACTION_DURATION, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False))#.join()
+        #self.client.moveByVelocityAsync(0, 0, 0, ACTION_DURATION, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False))#.join()
+        #
 
 
     # <---------
