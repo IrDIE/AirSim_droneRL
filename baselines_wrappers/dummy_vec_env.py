@@ -11,10 +11,11 @@ class DummyVecEnv(VecEnv):
     avoids communication overhead)
     """
     def __init__(self, env_fns):
+
         """
         Arguments:
 
-        env_fns: iterable of callables      functions that build environments
+        env_fns: iterable of callables functions that build environments
         """
         self.envs = [fn() for fn in env_fns]
         env = self.envs[0]

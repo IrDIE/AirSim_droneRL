@@ -18,7 +18,7 @@ from agents.double_dqn import *
 from agents.dueling_double_dqn import *
 
 EPOCHS = 30
-LOGG = True # <------- change here
+LOGG = False # <------- change here
 if LOGG: logger.add(f"{os.path.dirname(os.path.realpath(__file__))}/logs/log_{time.time()}.log")
 
 
@@ -49,10 +49,7 @@ def connect_drone(ip_address='127.0.0.5', num_agents=1, client=[]):
     return client
 
 
-def connect_exe_env(height_airsim_restart_positions, env_type='outdoor', max_episode_steps=100,
-                    documents_path = '../../../../../Documents',
-                    exe_path="./unreal_envs/outdoor_courtyard/outdoor_courtyard.exe",
-                    name='outdoor_courtyard'):
+def connect_exe_env(exe_path, name, documents_path, height_airsim_restart_positions, env_type='outdoor', max_episode_steps=100 ):
     cfg = read_cfg(config_filename='./configs/config.cfg', verbose=False)
     cfg.num_agents = 1
     restart_positions, airsim_positions_raw, done_xy = get_airsim_position(name=name)
@@ -68,7 +65,6 @@ def connect_exe_env(height_airsim_restart_positions, env_type='outdoor', max_epi
     # set batched environment
     vec_env = DummyVecEnv([make_env for _ in range(NUM_ENVS)])
     env = BatchedPytorchFrameStack(vec_env, k=2)
-
     return env, env_process
 
 def connect_indoor_simple_env(exe_path="./unreal_envs/easy_maze/Blocks.exe"):
@@ -89,8 +85,10 @@ def connect_indoor_simple_env(exe_path="./unreal_envs/easy_maze/Blocks.exe"):
 
     return env, env_process
 def inference_setup(env):
-    load_path = './saved_weights/dueling_ddqn2/restart_5/'  # <------- change here
+    load_path = './saved_weights/dueling_ddqn/restart_0/'  # <------- change here
     online_net = Double_Dueling_DQN(env=env, save_path=load_path, load_path=load_path) # <------- change here
+    online_net.eval()
+
     states = env.reset()
     res = 3
     for step in itertools.count():
@@ -111,7 +109,10 @@ def inference_setup(env):
 
 
 def inference(height_airsim_restart_positions):
-    env, env_process = connect_exe_env(height_airsim_restart_positions, exe_path="./unreal_envs/outdoor_courtyard/outdoor_courtyard.exe")
+
+    env, env_process = connect_exe_env(height_airsim_restart_positions, env_type='indoor', exe_path="./unreal_envs/easy_maze/Blocks.exe",
+                                       name='indoor_maze_easy')
+
     inference_setup(env)
     close_env(env_process)
 
@@ -157,8 +158,9 @@ def train_outroor_DDQN(logg_tb, save_path, epoch, reward_loggs, height_airsim_re
 
 
 def train_outroor_DDDQN(logg_tb, save_path, epoch, reward_loggs, height_airsim_restart_positions = [-5.35,-5.4, -6.5,-7.6,-8.5, -9. ],load_path=None):
-    env, env_process = connect_exe_env(height_airsim_restart_positions, env_type='indoor', max_episode_steps=100,
-                                       exe_path="./unreal_envs/normal_maze/Normal/Blocks.exe",
+
+    env, env_process = connect_exe_env(height_airsim_restart_positions = height_airsim_restart_positions, env_type='indoor', max_episode_steps=600,\
+                                       exe_path = "./unreal_envs/easy_maze/Blocks.exe", documents_path = '../../../../../Documents',\
                                        name='indoor_maze_easy')
     res = 0
     try:
@@ -232,51 +234,37 @@ def main_dddqn():
             load_path = f"./saved_weights/dueling_ddqn/{restart_n}"  # <------- change here
 
         train_outroor_DDDQN(logg_tb=LOGG_TB_DIR, save_path=SAVE_PATH, epoch=epoch, load_path=load_path,
-                            reward_loggs=rewards_logs, height_airsim_restart_positions= [-0.8339] )
+                            reward_loggs=rewards_logs, height_airsim_restart_positions= [-0.8339])
         time.sleep(5)
 
 
 def try_maze():
     env, env_process = connect_indoor_simple_env()
     env.reset()
-    time.sleep(3)
+    time.sleep(2)
     logger.info(f'env created')
     logger.info(f'step 0')
-    observation, reward, terminated, truncated, info = env.step([0])
 
-    visualize_observation(observation)
-    logger.info(f'step 1')
-    observation, reward, terminated, truncated, info=env.step([1])
+    env.step([5])
+    env.step([3])
+    env.step([2])
+    env.step([4])
+    env.step([4])
+    env.step([4])
+    env.step([1])
+    env.step([1])
+    env.step([1])
+    env.step([1])
 
-    visualize_observation(observation)
 
-    logger.info(f'step 2')
-    observation, reward, terminated, truncated, info=env.step([2])
-
-    visualize_observation(observation)
-
-    logger.info(f'step 3')
-    observation, reward, terminated, truncated, info=env.step([3])
-
-    visualize_observation(observation)
-
-    logger.info(f'step 4')
-    observation, reward, terminated, truncated, info=env.step([4])
-
-    visualize_observation(observation)
-
-    logger.info(f'step 5')
-    observation, reward, terminated, truncated, info=env.step([5])
-
-    visualize_observation(observation)
 
     close_env(env_process)
 
 
 if __name__ == "__main__":
 
-    main_dddqn()
+    try_maze() #main_dddqn()
 
-    #inference()  # main()
+    #inference(height_airsim_restart_positions= [-0.8339])  # main()
 
 

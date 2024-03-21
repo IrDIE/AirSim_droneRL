@@ -1,5 +1,6 @@
 import numpy as np
 import os
+from loguru import  logger
 os.environ.setdefault('PATH', '')
 import gymnasium as gym
 import cv2
@@ -110,6 +111,7 @@ class MaxAndSkipEnv(gym.Wrapper):
         truncated = None
         for i in range(self._skip):
             obs, reward, terminated, truncated, info = self.env.step(action) #observation, reward, terminated, truncated, info
+            #logger.info(f'max and skip obs = {obs.shape}')
             if i == self._skip - 2: self._obs_buffer[0] = obs
             if i == self._skip - 1: self._obs_buffer[1] = obs
             # if i == self._skip - 1: self._obs_buffer[0] = obs
@@ -123,6 +125,7 @@ class MaxAndSkipEnv(gym.Wrapper):
         # logger.info(f'self._obs_buffer.shape = {self._obs_buffer.shape}')
         max_frame = self._obs_buffer.max(axis=0) #  contains some temporal information
         #max_frame = self._obs_buffer[0]
+        #logger.info(f' max and skip max_frame shape = {max_frame.shape}')
         return max_frame, total_reward, terminated, truncated, info
 
 

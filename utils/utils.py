@@ -5,6 +5,19 @@ import pandas as pd
 from dotmap import DotMap
 import numpy as np
 import cv2
+def get_scale_factor(y):
+    """
+    specially for maze env ^ multiply reward to scale factor in agent accomplish to go far
+    len of maze [0,60]
+    """
+    scale = 1
+    if y > 55:  scale = 5
+    elif y > 40 and y <= 55: scale = 4
+    elif y > 28 and y <= 40:  scale = 3
+    elif y > 8 and y <= 28: scale = 2
+    return scale
+
+
 
 def generate_json(cfg, initial_positions, documents_path = '~\Documents'):
     """

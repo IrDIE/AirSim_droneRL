@@ -102,7 +102,7 @@ def indoor_maze_easy():
         [0, 0, 90],  # same as simulation starts
 
     ]
-    done_xy = [(-5,5),(-7,100000)] # min_x, max_x min_y, max_y
+    done_xy = [(-5,5),(-7,60)] # min_x, max_x min_y, max_y
     # crash_threshold = 0.07
     return orig_ip, done_xy
 

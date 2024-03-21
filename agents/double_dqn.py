@@ -127,7 +127,7 @@ class Double_DQN(nn.Module):
         self.convNet.load_state_dict(torch.load(path))
 
 
-def training_ddqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log = 'restart_best_rewards',  load_path = None):
+def training_ddqn(env, logg_tb, epoch, save_path, reward_loggs, collision_reward=-2, csv_rewards_log = 'restart_best_rewards',  load_path = None):
     replay_buffer = deque(maxlen=BUFFER_SIZE)
     info_buffer = deque(maxlen=200)
     online_net = Double_DQN(env=env, save_path=save_path, load_path = load_path)
@@ -152,7 +152,7 @@ def training_ddqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log 
     # main training loop
     states = env.reset()
 
-    last_rew = -10.
+    last_rew =collision_reward
     for step in itertools.count():
         # select action
         epsilon = np.interp(step * NUM_ENVS, [0, EPSILON_DECAY], [EPSILON_START, EPSILON_END])
@@ -186,7 +186,7 @@ def training_ddqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log 
 
         if step % LOGGING_INTERVAL == 0:
             mean_rew = np.mean([e['r'] for e in info_buffer if len(info_buffer) > 0 ])
-            mean_rew = -10 if np.isnan(mean_rew) else mean_rew
+            mean_rew = collision_reward if np.isnan(mean_rew) else mean_rew
             mean_duration = np.mean([e['l'] for e in info_buffer]) or 0
             mean_duration = 0 if np.isnan(mean_duration) else mean_duration
 

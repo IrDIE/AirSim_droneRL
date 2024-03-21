@@ -15,11 +15,11 @@ from utils.pytorch_wrappers import PytorchLazyFrames
 warnings.filterwarnings('ignore')
 
 GAMMA = 0.99 # DISCOUNT RATE
-BATCH_SIZE = 32 #32 # FROM REPLAY BUFFER
+BATCH_SIZE = 32# 128 #32 # FROM REPLAY BUFFER
 BUFFER_SIZE = 10_000
-MIN_REPLAY_SIZE = 100 #1000
-EPSILON_START = 0.7 # E GREEDY POLICY
-EPSILON_END = 0.02
+MIN_REPLAY_SIZE = 50#1000 #1000
+EPSILON_START = 0.9 # E GREEDY POLICY
+EPSILON_END = 0.01
 EPSILON_DECAY = 1000
 
 LR = 5e-4
@@ -32,6 +32,7 @@ RESTART_EXE = 1000
 class Double_Dueling_DQN(nn.Module):
     def __init__(self, env, save_path, load_path):
         super(Double_Dueling_DQN, self).__init__()
+        self.not_calculated_flatten = True
         self.action_shape = env.action_space.n
         self.convNet = self.get_conv_net(env)
 
@@ -40,7 +41,6 @@ class Double_Dueling_DQN(nn.Module):
 
         self.save_path, self.load_path = save_path, load_path
 
-        logger.info(f"self.convNet = \n{self.convNet}")
         try:
             self.load_weights(self.load_path + '/dqn_best.pt')
             logger.info(f"Found {self.load_path  + '/dqn_best.pt'} weights, attempt to load ...")
@@ -57,12 +57,9 @@ class Double_Dueling_DQN(nn.Module):
 
     def action(self, states, epsilon, inference=False):
         states = torch.tensor(states, dtype=torch.float32)
-
         _, advantage = self.forward(states) # in online net -> get action advantage
-
         max_indexs = torch.argmax(advantage, dim=1)
         actions = max_indexs.detach().tolist()
-
         if not inference:
             for i in range(len(actions)):
                 if np.random.random() <= epsilon :
@@ -93,7 +90,8 @@ class Double_Dueling_DQN(nn.Module):
 
         )
 
-    def get_conv_net(self, env, depths = [64,128,64], kernel_size = [8,4,3], stride = [4,2,1], outp_size = 512):
+    def get_conv_net(self, env, depths = [64,128,64], kernel_size = [3,4,3], stride = [4,2,1], outp_size = 512):
+        #logger.info(f'env.observation_space.shape = {env.observation_space.shape}')
         self.in_channels = list([env.observation_space.shape[0]])
         self.depth = self.in_channels + depths
         self.kernel_size = kernel_size
@@ -103,17 +101,44 @@ class Double_Dueling_DQN(nn.Module):
         conv_blocks = [self.get_convBlock(from_ch = inp, to_ch = out, kernel_size = kernel_size, stride = stride) \
                        for inp,out, kernel_size, stride in zip(self.depth, self.depth[1:], self.kernel_size, self.stride)
                        ]
-        self.convNet = nn.Sequential(
-            *conv_blocks,
+
+
+        self.convNet_ = nn.Sequential(
+            nn.Conv2d(self.in_channels[0], 64, kernel_size=(3,3), stride=1),
+            nn.MaxPool2d((2,2)),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+
+            nn.Conv2d(64, 128, kernel_size=(3, 3), stride=1),
+            nn.MaxPool2d((2, 2)),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+
+            nn.Conv2d(128, 128, kernel_size=(3, 3), stride=1),
+            nn.MaxPool2d((2, 2)),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+
+            nn.Conv2d(128, 64, kernel_size=(3, 3), stride=1),
+            nn.MaxPool2d((2, 2)),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
             nn.Flatten()
         )
+        # self.convNet_ = nn.Sequential(
+        #     *conv_blocks,
+        #     nn.Flatten()
+        # )
 
-        with torch.no_grad():
-            flatten_size = self.convNet(torch.as_tensor(env.observation_space.sample()[None]).float() ).shape[1]
+        if self.not_calculated_flatten:
+            with torch.no_grad():
+                self.flatten_size = self.convNet_(torch.as_tensor(env.observation_space.sample()[None]).float() ).shape[1]
+                #logger.info(f'self.flatten_size = {self.flatten_size}')
+            self.not_calculated_flatten = False
 
         return nn.Sequential(
-            self.convNet,
-            nn.Linear(flatten_size, self.outp_size ),
+            self.convNet_,
+            nn.Linear(self.flatten_size, self.outp_size),
             nn.ReLU()
         )
 
@@ -154,19 +179,22 @@ class Double_Dueling_DQN(nn.Module):
 
     def save_best_last(self, best = True):
         if best :
-            torch.save(self.convNet.state_dict(), self.save_path + 'dqn_best.pt')
+            torch.save(self.state_dict(), self.save_path + 'dqn_best.pt')
         else:
-            torch.save(self.convNet.state_dict(), self.save_path + 'dqn_last.pt')
+            torch.save(self.state_dict(), self.save_path + 'dqn_last.pt')
 
     def load_weights(self, path):
-        self.convNet.load_state_dict(torch.load(path))
+        self.load_state_dict(torch.load(path))
 
 
-def training_dddqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log ='restart_best_rewards', load_path = None):
+def training_dddqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log ='restart_best_rewards', collision_reward=-2, load_path = None):
     replay_buffer = deque(maxlen=BUFFER_SIZE)
     info_buffer = deque(maxlen=200)
     online_net = Double_Dueling_DQN(env=env, save_path=save_path, load_path = load_path)
+    online_net.train()
     target_net = Double_Dueling_DQN(env=env, save_path=save_path, load_path=load_path)
+    target_net.train()
+
     target_net.load_state_dict(online_net.state_dict())
     optimizer = Adam(lr=LR, params=online_net.parameters())
     tb_summary = SummaryWriter(logg_tb)
@@ -176,10 +204,10 @@ def training_dddqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log
     # init replay buffer before training
     states = env.reset()
     for i in range(MIN_REPLAY_SIZE):
-        logger.info(f'replay {i}')
+
         actions = [env.action_space.sample() for _ in range(NUM_ENVS)]  # sample from env randomly
         new_states, rewards, terminateds, truncateds, infos = env.step(actions)
-
+        #logger.info(f'replay {i}, terminateds={terminateds}, truncateds={truncateds}')
         for state, action, reward, terminated, truncated, new_state in zip(states, actions, rewards, terminateds, truncateds, new_states):
             transition = (state, action, reward, terminated, truncated, new_state)
             replay_buffer.append(transition)
@@ -189,7 +217,7 @@ def training_dddqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log
     states = env.reset()
     logger.info(f'\n***\nFinish collect buffer. Start main training....')
 
-    last_rew = -10.
+    last_rew = collision_reward
     for step in itertools.count():
         # select action
         epsilon = np.interp(step * NUM_ENVS, [0, EPSILON_DECAY], [EPSILON_START, EPSILON_END])
@@ -245,7 +273,7 @@ def training_dddqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log
             tb_summary.add_scalar('mean_duration', mean_duration if mean_duration is not None else 0, global_step=step)
             tb_summary.add_scalar('episode_count', episode_count, global_step=step)
 
-            if step > RESTART_EXE:
-                logger.info(f'Episode: {step}\nRestart .exe')
-                return -1
+            # if step > RESTART_EXE:
+            #     logger.info(f'Episode: {step}\nRestart .exe')
+            #     return -1
 
