@@ -62,7 +62,7 @@ def connect_exe_env(exe_path, name, documents_path, height_airsim_restart_positi
                                allow_early_resets=True)
     # set batched environment
     vec_env = DummyVecEnv([make_env for _ in range(NUM_ENVS)])
-    env = BatchedPytorchFrameStack(vec_env, k=2)
+    env = BatchedPytorchFrameStack(vec_env, k=1)
     return env, env_process
 
 def connect_indoor_simple_env(exe_path="./unreal_envs/easy_maze/Blocks.exe"):
