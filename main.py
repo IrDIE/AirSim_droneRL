@@ -18,7 +18,7 @@ from agents.double_dqn import *
 from agents.dueling_double_dqn import *
 
 EPOCHS = 30
-LOGG = False # <------- change here
+LOGG = True # <------- change here
 if LOGG: logger.add(f"{os.path.dirname(os.path.realpath(__file__))}/logs/log_{time.time()}.log")
 
 
@@ -85,7 +85,7 @@ def connect_indoor_simple_env(exe_path="./unreal_envs/easy_maze/Blocks.exe"):
 
     return env, env_process
 def inference_setup(env):
-    load_path = './saved_weights/dueling_ddqn/restart_0/'  # <------- change here
+    load_path = './saved_weights/dueling_ddqn/restart_8/'  # <------- change here
     online_net = Double_Dueling_DQN(env=env, save_path=load_path, load_path=load_path) # <------- change here
     online_net.eval()
 
@@ -110,8 +110,9 @@ def inference_setup(env):
 
 def inference(height_airsim_restart_positions):
 
-    env, env_process = connect_exe_env(height_airsim_restart_positions, env_type='indoor', exe_path="./unreal_envs/easy_maze/Blocks.exe",
-                                       name='indoor_maze_easy')
+    env, env_process = connect_exe_env(height_airsim_restart_positions=height_airsim_restart_positions, env_type='indoor',
+                                       exe_path="./unreal_envs/easy_maze/Blocks.exe",
+                                       name='indoor_maze_easy', documents_path = '../../../../../Documents')
 
     inference_setup(env)
     close_env(env_process)
@@ -278,8 +279,8 @@ def try_maze():
 
 if __name__ == "__main__":
 
-    main_dddqn()
+    #main_dddqn()
 
-    #inference(height_airsim_restart_positions= [-0.8339])  # main()
+    inference(height_airsim_restart_positions= [-0.8339])  # main()
 
 
