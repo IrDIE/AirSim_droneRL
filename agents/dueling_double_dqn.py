@@ -18,17 +18,17 @@ GAMMA = 0.99 # DISCOUNT RATE
 
 BATCH_SIZE = 16 # 128 #32 # FROM REPLAY BUFFER
 BUFFER_SIZE = 10_000
-MIN_REPLAY_SIZE = 1000 #1000 #1000
+MIN_REPLAY_SIZE = 800 #1000
 
 EPSILON_START = 0.9 # E GREEDY POLICY
 EPSILON_END = 0.05
-EPSILON_DECAY = 1000
+EPSILON_DECAY = 800
 
-LR = 1e-4
+LR = 5e-4
 
 NUM_ENVS = 1
-TARGET_UPDATE_FREQ = 600 // NUM_ENVS
-LOGGING_INTERVAL = 30 #30 #
+TARGET_UPDATE_FREQ = 250 // NUM_ENVS
+LOGGING_INTERVAL = 50 #30 #
 RESTART_EXE = 1000
 
 class Double_Dueling_DQN(nn.Module):
@@ -78,6 +78,8 @@ class Double_Dueling_DQN(nn.Module):
 
     def get_dueling_state(self):
         return nn.Sequential(
+            nn.Linear(self.outp_size, self.outp_size),
+            nn.ReLU(),
             nn.Linear(self.outp_size, 128),
             nn.ReLU(),
             nn.Linear(128, 1),
@@ -86,13 +88,15 @@ class Double_Dueling_DQN(nn.Module):
 
     def get_dueling_action(self):
         return nn.Sequential(
+            nn.Linear(self.outp_size, self.outp_size),
+            nn.ReLU(),
             nn.Linear(self.outp_size, 128),
             nn.ReLU(),
             nn.Linear(128, self.action_shape),
 
         )
 
-    def get_conv_net(self, env, depths = [64,128,64], kernel_size = [3,4,3], stride = [4,2,1], outp_size = 512):
+    def get_conv_net(self, env, depths = [64,128,64], kernel_size = [3,4,3], stride = [4,2,1], outp_size = 512*2):
         #logger.info(f'env.observation_space.shape = {env.observation_space.shape}')
         self.in_channels = list([env.observation_space.shape[0]])
         self.depth = self.in_channels + depths
@@ -107,7 +111,7 @@ class Double_Dueling_DQN(nn.Module):
 
         self.convNet_ = nn.Sequential(
             nn.Conv2d(self.in_channels[0], 64, kernel_size=(3,3), stride=1),
-            nn.MaxPool2d((2,2)),
+            # nn.MaxPool2d((2,2)),
             nn.BatchNorm2d(64),
             nn.ReLU(),
 
@@ -116,13 +120,8 @@ class Double_Dueling_DQN(nn.Module):
             nn.BatchNorm2d(128),
             nn.ReLU(),
 
-            nn.Conv2d(128, 128, kernel_size=(3, 3), stride=1),
-            nn.MaxPool2d((2, 2)),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
-
             nn.Conv2d(128, 64, kernel_size=(3, 3), stride=1),
-            nn.MaxPool2d((2, 2)),
+            # nn.MaxPool2d((2, 2)),
             nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.Flatten()
@@ -140,7 +139,9 @@ class Double_Dueling_DQN(nn.Module):
 
         return nn.Sequential(
             self.convNet_,
-            nn.Linear(self.flatten_size, self.outp_size),
+            nn.Linear(self.flatten_size, 512),
+            nn.ReLU(),
+            nn.Linear(512, self.outp_size),
             nn.ReLU()
         )
 
@@ -269,7 +270,7 @@ def training_dddqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log
                 f"\nCkeckpoint for last model with reward = {mean_rew} at step {step}. Saving model weights....")
             online_net.save_best_last(best=False)
 
-            logger.info(f'Episode: {step}\nReward  == {mean_rew}\nDuration == {mean_duration}')
+            logger.info(f'Episode: {step}\nReward  == {mean_rew}\nDuration == {mean_duration}. Epsilon={epsilon}.')
 
             tb_summary.add_scalar('mean_rew', mean_rew if mean_rew is not None else 0, global_step=step)
             tb_summary.add_scalar('mean_duration', mean_duration if mean_duration is not None else 0, global_step=step)

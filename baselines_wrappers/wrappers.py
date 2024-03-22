@@ -14,8 +14,9 @@ class TimeLimit(gym.Wrapper):
         # logger.info(f'self._elapsed_steps = {self._elapsed_steps}')
         if self._elapsed_steps >= self._max_episode_steps:
             truncated = True
-            terminated = True
+            terminated = False # collision
             info['TimeLimit.truncated'] = True
+            logger.info(f'\n*****\n=== RESET VIA ELAPSED STEPS')
         return observation, reward, terminated, truncated, info
 
     def reset(self, **kwargs):

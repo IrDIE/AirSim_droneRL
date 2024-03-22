@@ -90,11 +90,13 @@ def inference_setup(env):
     online_net.eval()
 
     states = env.reset()
+
     res = 3
     for step in itertools.count():
         # select action
         # res = visualize_observation(states)
         states_ = np.stack([lasy.get_frames() for lasy in states])
+        logger.info(f"states={states_}")
         actions = online_net.action(states_, epsilon=-1, inference=True)
         # take action
         new_states, rewards, terminated, truncated, infos = env.step(actions)
@@ -161,7 +163,7 @@ def train_outroor_DDQN(logg_tb, save_path, epoch, reward_loggs, height_airsim_re
 
 def train_outroor_DDDQN(logg_tb, save_path, epoch, reward_loggs, height_airsim_restart_positions = [-5.35,-5.4, -6.5,-7.6,-8.5, -9. ],load_path=None):
 
-    env, env_process = connect_exe_env(height_airsim_restart_positions = height_airsim_restart_positions, env_type='indoor', max_episode_steps=600,\
+    env, env_process = connect_exe_env(height_airsim_restart_positions = height_airsim_restart_positions, env_type='indoor', max_episode_steps=100,\
                                        exe_path = "./unreal_envs/easy_maze/Blocks.exe", documents_path = '../../../Documents',\
                                        name='indoor_maze_easy')
     res = 0
@@ -245,42 +247,19 @@ def try_maze():
     time.sleep(2)
     logger.info(f'env created')
     logger.info(f'step 0')
+    for i in itertools.count():
 
-    env.step([4])
-
-
-    env.step([5])
-    env.step([5])
-
-    env.step([4])
-    env.step([4])
-
-    env.step([2])
-    env.step([1])
-    env.step([1])
-    env.step([1])
-    env.step([1])
-    env.step([1])
-    env.step([3])
-
-    env.step([1])
-    env.step([1])
-    env.step([1])
-    env.step([1])
-    env.step([1])
-    env.step([1])
-    env.step([1])
-    env.step([1])
-
-
+        env.step([5])
+        env.step([5])
+        env.step([5])
 
     close_env(env_process)
 
 
 if __name__ == "__main__":
 
-    #main_dddqn()
+    main_dddqn()
 
-    inference(height_airsim_restart_positions= [-0.8339])  # main()
+    #inference(height_airsim_restart_positions= [-0.8339])  # main()
 
 
