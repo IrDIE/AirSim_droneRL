@@ -18,7 +18,7 @@ from agents.double_dqn import *
 from agents.dueling_double_dqn import *
 
 EPOCHS = 30
-LOGG = False # <------- change here
+LOGG = True # <------- change here
 if LOGG: logger.add(f"{os.path.dirname(os.path.realpath(__file__))}/logs/log_{time.time()}.log")
 
 
@@ -85,7 +85,7 @@ def connect_indoor_simple_env(exe_path="./unreal_envs/easy_maze/Blocks.exe"):
 
     return env, env_process
 def inference_setup(env):
-    load_path = './saved_weights/dueling_ddqn/restart_0/'  # <------- change here
+    load_path = './saved_weights/dueling_ddqn_maze/restart_3/'  # <------- change here
     online_net = Double_Dueling_DQN(env=env, save_path=load_path, load_path=load_path) # <------- change here
     online_net.eval()
 
@@ -110,8 +110,8 @@ def inference_setup(env):
 
 def inference(height_airsim_restart_positions):
 
-    env, env_process = connect_exe_env(height_airsim_restart_positions, env_type='indoor', exe_path="./unreal_envs/easy_maze/Blocks.exe",
-                                       name='indoor_maze_easy')
+    env, env_process = connect_exe_env(height_airsim_restart_positions=height_airsim_restart_positions, env_type='indoor', exe_path="./unreal_envs/easy_maze/Blocks.exe",
+                                       name='indoor_maze_easy', documents_path = '../../../Documents')
 
     inference_setup(env)
     close_env(env_process)
@@ -160,10 +160,10 @@ def train_outroor_DDQN(logg_tb, save_path, epoch, reward_loggs, height_airsim_re
 def train_outroor_DDDQN(logg_tb, save_path, epoch, reward_loggs, height_airsim_restart_positions = [-5.35,-5.4, -6.5,-7.6,-8.5, -9. ],load_path=None):
 
     env, env_process = connect_exe_env(height_airsim_restart_positions = height_airsim_restart_positions, env_type='indoor', max_episode_steps=600,\
-                                       exe_path = "./unreal_envs/easy_maze/Blocks.exe", documents_path = '../../../../../Documents',\
+                                       exe_path = "./unreal_envs/easy_maze/Blocks.exe", documents_path = '../../../Documents',\
                                        name='indoor_maze_easy')
     res = 0
-    try:
+    try: # '../../../../../Documents'
         res = training_dddqn(env, logg_tb=logg_tb, epoch=epoch, save_path=save_path, load_path=load_path,
                              reward_loggs=reward_loggs)
         close_env(env_process)
@@ -222,8 +222,8 @@ def main_ddqn():
 def main_dddqn():
     for epoch in range(EPOCHS):
 
-        LOGG_TB_DIR = f"logs/dueling_ddqn/restart_exe_{epoch}/"  # <------- change here
-        SAVE_PATH = f"./saved_weights/dueling_ddqn/restart_{epoch}/"  # <------- change here
+        LOGG_TB_DIR = f"logs/dueling_ddqn_maze/restart_exe_{epoch}/"  # <------- change here
+        SAVE_PATH = f"./saved_weights/dueling_ddqn_maze/restart_{epoch}/"  # <------- change here
 
         csv_rewards_log = 'restart_best_rewards'
         create_folder(SAVE_PATH)
@@ -231,7 +231,7 @@ def main_dddqn():
         rewards_logs = load_save_logg_reward(save=False, save_path=SAVE_PATH, csv_rewards_log=csv_rewards_log)
         if len(rewards_logs) > 1:
             restart_n = rewards_logs[rewards_logs['reward'] == rewards_logs['reward'].max()]['restart_n'].values[0]
-            load_path = f"./saved_weights/dueling_ddqn/{restart_n}"  # <------- change here
+            load_path = f"./saved_weights/dueling_ddqn_maze/{restart_n}"  # <------- change here
 
         train_outroor_DDDQN(logg_tb=LOGG_TB_DIR, save_path=SAVE_PATH, epoch=epoch, load_path=load_path,
                             reward_loggs=rewards_logs, height_airsim_restart_positions= [-0.8339])
@@ -278,8 +278,8 @@ def try_maze():
 
 if __name__ == "__main__":
 
-    main_dddqn()
+    #main_dddqn()
 
-    #inference(height_airsim_restart_positions= [-0.8339])  # main()
+    inference(height_airsim_restart_positions= [-0.8339])  # main()
 
 
