@@ -1,9 +1,7 @@
 import subprocess
 import time
 import os
-
 import cv2
-
 from airsim_env import close_env
 from utils.utils import generate_json
 import airsim
@@ -176,11 +174,10 @@ def train_outroor_DDDQN(logg_tb, save_path, epoch, reward_loggs, height_airsim_r
             logger.info('Recovering from AirSim error')
             close_env(env_process)
             res = -2
-    except Exception as restart:
-        logger.info(f'API is dead... \n{str(restart)}\nClose .exe ')
-        close_env(env_process)
-        # if str(restart) != 'Request timed out' :
-        res = -2
+    # except Exception as restart:
+    #     logger.info(f'API is dead... \n{str(restart)}\nClose .exe ')
+    #     close_env(env_process)
+    #     res = -2
 
     return res
 
