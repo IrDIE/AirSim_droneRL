@@ -3,6 +3,7 @@ logs/*
 __pycache__
 saved_weights/*
 venv_anaconda
+utils/chech_cuda.py
 .idea*
 old_logs_dqn
 
