@@ -17,18 +17,18 @@ warnings.filterwarnings('ignore')
 GAMMA = 0.99 # DISCOUNT RATE
 
 BATCH_SIZE = 8 # 128 #32 # FROM REPLAY BUFFER
-BUFFER_SIZE = 7_000
-MIN_REPLAY_SIZE = 800 #1000
+BUFFER_SIZE = 500_000
+MIN_REPLAY_SIZE = 50_000 #1000
 
 EPSILON_START = 0.9 # E GREEDY POLICY
-EPSILON_END = 0.05
-EPSILON_DECAY = 800
+EPSILON_END = 0.02
+EPSILON_DECAY = 500_000
 
-LR = 5e-4
+LR = 5e-5
 
 NUM_ENVS = 1
-TARGET_UPDATE_FREQ = 150 // NUM_ENVS
-LOGGING_INTERVAL = 50 #30 #
+TARGET_UPDATE_FREQ = 10_000 // NUM_ENVS
+LOGGING_INTERVAL = 150 #30 #
 RESTART_EXE = 1000
 
 class Double_Dueling_DQN(nn.Module):
@@ -37,17 +37,12 @@ class Double_Dueling_DQN(nn.Module):
         self.not_calculated_flatten = True
         self.action_shape = env.action_space.n
         self.convNet = self.get_conv_net(env)
-
+        self.outp_size = 128
         self.dueling_state = self.get_dueling_state()
         self.dueling_action = self.get_dueling_action()
 
-        self.save_path, self.load_path = save_path, load_path
-
-        try:
-            self.load_weights(self.load_path + '/dqn_best.pt')
-            logger.info(f"Found {self.load_path  + '/dqn_best.pt'} weights, attempt to load ...")
-        except:
-            logger.info('No best.pt weights, random initialization ...')
+        self.save_path  = save_path
+        self.load_path = load_path
 
 
     def forward(self, x):
@@ -69,13 +64,6 @@ class Double_Dueling_DQN(nn.Module):
 
         return actions
 
-    def get_convBlock(self, from_ch, to_ch, kernel_size, stride):
-        return nn.Sequential(
-            nn.Conv2d(from_ch, to_ch, kernel_size=kernel_size, stride=stride),
-            nn.BatchNorm2d(to_ch),
-            nn.ReLU()
-        )
-
     def get_dueling_state(self):
         return nn.Sequential(
             nn.Linear(self.outp_size, self.outp_size),
@@ -96,40 +84,20 @@ class Double_Dueling_DQN(nn.Module):
 
         )
 
-    def get_conv_net(self, env, depths = [64,128,64], kernel_size = [3,4,3], stride = [4,2,1], outp_size = 512*2):
+    def get_conv_net(self, env):
         #logger.info(f'env.observation_space.shape = {env.observation_space.shape}')
         self.in_channels = list([env.observation_space.shape[0]])
-        self.depth = self.in_channels + depths
-        self.kernel_size = kernel_size
-        self.stride = stride
-        self.outp_size = outp_size
-
-        conv_blocks = [self.get_convBlock(from_ch = inp, to_ch = out, kernel_size = kernel_size, stride = stride) \
-                       for inp,out, kernel_size, stride in zip(self.depth, self.depth[1:], self.kernel_size, self.stride)
-                       ]
-
-
         self.convNet_ = nn.Sequential(
-            nn.Conv2d(self.in_channels[0], 64, kernel_size=(3,3), stride=1),
-            # nn.MaxPool2d((2,2)),
-            nn.BatchNorm2d(64),
+            nn.Conv2d(self.in_channels[0], 32, kernel_size=(8, 8), stride=3),
             nn.ReLU(),
 
-            nn.Conv2d(64, 128, kernel_size=(3, 3), stride=1),
-            nn.MaxPool2d((2, 2)),
-            nn.BatchNorm2d(128),
+            nn.Conv2d(32, 64, kernel_size=(4, 4), stride=2),
             nn.ReLU(),
 
-            nn.Conv2d(128, 64, kernel_size=(3, 3), stride=1),
-            # nn.MaxPool2d((2, 2)),
-            nn.BatchNorm2d(64),
+            nn.Conv2d(64, 64, kernel_size=(3, 3), stride=1),
             nn.ReLU(),
             nn.Flatten()
         )
-        # self.convNet_ = nn.Sequential(
-        #     *conv_blocks,
-        #     nn.Flatten()
-        # )
 
         if self.not_calculated_flatten:
             with torch.no_grad():
@@ -150,7 +118,7 @@ class Double_Dueling_DQN(nn.Module):
         states_ = [t[0] for t in trg]
         actions = torch.as_tensor(np.asarray([t[1] for t in trg]), dtype=torch.int64).unsqueeze(-1)
         rews = torch.as_tensor(np.asarray([t[2] for t in trg]), dtype=torch.float32).unsqueeze(-1)
-        dones = torch.as_tensor(np.asarray([t[3] for t in trg]), dtype=torch.float32).unsqueeze(-1)
+        dones = torch.as_tensor(np.asarray([t[3] or t[4] for t in trg]), dtype=torch.float32).unsqueeze(-1)
         new_states_ = [t[5] for t in trg]
 
         if isinstance(states_[0], PytorchLazyFrames):
@@ -176,33 +144,61 @@ class Double_Dueling_DQN(nn.Module):
         targets = rews + GAMMA * (1 - dones) * targets_selected_q_values
         # loss
         action_q_values = torch.gather(q_pred, dim=1, index=actions)
-        loss = smooth_l1_loss(action_q_values, targets)
-
+        loss = nn.functional.smooth_l1_loss(action_q_values, targets)
+        #nn.functional.smooth_l1_loss()
         return loss
 
-    def save_best_last(self, best = True):
+    def save_best_last(self, best = True, optimizer : torch.optim.Adam =None):
         if best :
-            torch.save(self.state_dict(), self.save_path + 'dqn_best.pt')
+            if optimizer is not None:
+                ckpt_info = {
+                    'model_state_dict' : self.state_dict(),
+                    'optimizer_state_dict' : optimizer.state_dict()
+                     }
+                torch.save(ckpt_info , self.save_path + 'dqn_best.pt')
+            else: torch.save(self.state_dict(), self.save_path + 'dqn_best.pt')
+
         else:
-            torch.save(self.state_dict(), self.save_path + 'dqn_last.pt')
 
-    def load_weights(self, path):
-        self.load_state_dict(torch.load(path))
+            if optimizer is not None:
+                ckpt_info = {
+                    'model_state_dict': self.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict()
+                }
+                torch.save(ckpt_info, self.save_path + 'dqn_last.pt')
+            else: torch.save(self.state_dict(), self.save_path + 'dqn_last.pt')
 
 
-def training_dddqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log ='restart_best_rewards', collision_reward=-2, load_path = None):
+    def load_weights(self, path, optimizer : torch.optim.Adam =None):
+        if optimizer is not None:
+            ckpt_info = torch.load(path)
+            self.load_state_dict(ckpt_info['model_state_dict'])
+            optimizer.load_state_dict(ckpt_info['optimizer_state_dict'])
+
+        else: self.load_state_dict(torch.load(path))
+
+
+def training_dddqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log ='restart_best_rewards',
+                   collision_reward=-2, load_path = None):
     replay_buffer = deque(maxlen=BUFFER_SIZE)
-    info_buffer = deque(maxlen=200)
+    info_buffer = deque(maxlen=100)
     online_net = Double_Dueling_DQN(env=env, save_path=save_path, load_path = load_path)
-    online_net.train()
     target_net = Double_Dueling_DQN(env=env, save_path=save_path, load_path=load_path)
-    target_net.train()
 
-    target_net.load_state_dict(online_net.state_dict())
     optimizer = Adam(lr=LR, params=online_net.parameters())
     tb_summary = SummaryWriter(logg_tb)
 
+    try:
+        online_net.load_weights(load_path + '/dqn_best.pt', optimizer=optimizer)
+        logger.info(f"Found {load_path + '/dqn_best.pt'} weights, attempt to load ...")
+    except:
+        logger.info('No best.pt weights, random initialization ...')
+
+
     episode_count = 0
+    target_net.load_state_dict(online_net.state_dict())
+    target_net.train()
+    online_net.train()
 
     # init replay buffer before training
     states = env.reset()
@@ -254,7 +250,7 @@ def training_dddqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log
 
         if step % LOGGING_INTERVAL == 0:
             mean_rew = np.mean([e['r'] for e in info_buffer if len(info_buffer) > 0 ])
-            mean_rew = -10 if np.isnan(mean_rew) else mean_rew
+            mean_rew = -2 if np.isnan(mean_rew) else mean_rew
             mean_duration = np.mean([e['l'] for e in info_buffer]) or 0
             mean_duration = 0 if np.isnan(mean_duration) else mean_duration
 
@@ -262,7 +258,7 @@ def training_dddqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log
             load_save_logg_reward(df = reward_loggs,save=True, save_path=save_path, csv_rewards_log=csv_rewards_log)
 
             if mean_rew > last_rew:
-                logger.info(f"\n*****\nCkeckpoint for best model with reward = {mean_rew} at step {step}. Saving model weights....")
+                logger.info(f"\n*****\nCkeckpoint for best model with reward = {mean_rew} at step {step}. Saving model weights. Epsilon={epsilon}.")
                 online_net.save_best_last(best=True)
                 last_rew = mean_rew
 
