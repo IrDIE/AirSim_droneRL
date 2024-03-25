@@ -63,7 +63,7 @@ class DQN(nn.Module):
             nn.BatchNorm2d(to_ch),
             nn.ReLU()
         )
-    def get_conv_net(self, env, depths = [64,128,64], kernel_size = [8,4,3], stride = [4,2,1], outp_size = 512):
+    def get_conv_net(self, env, depths = [64,128,64], kernel_size = [8,4,3], stride = [4,2,1]):
         self.in_channels = list([env.observation_space.shape[0]])
         self.depth = self.in_channels + depths
         self.kernel_size = kernel_size

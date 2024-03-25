@@ -15,20 +15,16 @@ from utils.pytorch_wrappers import PytorchLazyFrames
 warnings.filterwarnings('ignore')
 
 GAMMA = 0.99 # DISCOUNT RATE
-
-BATCH_SIZE = 8 # 128 #32 # FROM REPLAY BUFFER
+BATCH_SIZE = 32 # 128 #32 # FROM REPLAY BUFFER
 BUFFER_SIZE = 500_000
-MIN_REPLAY_SIZE = 10 #50_000 #1000
-
+MIN_REPLAY_SIZE = 400 #50_000
 EPSILON_START = 0.9 # E GREEDY POLICY
-EPSILON_END = 0.02
+EPSILON_END = 0.1
 EPSILON_DECAY = 500_000
-
 LR = 5e-5
-
 NUM_ENVS = 1
 TARGET_UPDATE_FREQ = 10_000 // NUM_ENVS
-LOGGING_INTERVAL = 5 # 150 #30 #
+LOGGING_INTERVAL = 5 # 150
 RESTART_EXE = 1000
 
 class Double_Dueling_DQN(nn.Module):
@@ -36,9 +32,10 @@ class Double_Dueling_DQN(nn.Module):
         super(Double_Dueling_DQN, self).__init__()
         self.device = device
         self.not_calculated_flatten = True
+        self.outp_size = 128
         self.action_shape = env.action_space.n
         self.convNet = self.get_conv_net(env)
-        self.outp_size = 128
+
         self.dueling_state = self.get_dueling_state()
         self.dueling_action = self.get_dueling_action()
 
@@ -89,7 +86,7 @@ class Double_Dueling_DQN(nn.Module):
         #logger.info(f'env.observation_space.shape = {env.observation_space.shape}')
         self.in_channels = list([env.observation_space.shape[0]])
         self.convNet_ = nn.Sequential(
-            nn.Conv2d(self.in_channels[0], 32, kernel_size=(8, 8), stride=3),
+            nn.Conv2d(self.in_channels[0], 32, kernel_size=(5, 5), stride=2),
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=(4, 4), stride=2),
             nn.ReLU(),
@@ -129,7 +126,9 @@ class Double_Dueling_DQN(nn.Module):
 
         # for double:
         V_states, A_states = self.forward(states)
+        logger.info(f'onl forwd')
         V_new_states, A_new_states = target_net.forward(new_states)
+        logger.info(f'trg forwd')
 
         V_s_eval, A_s_eval = self.forward(new_states)
         q_pred = torch.add(V_states,
@@ -180,6 +179,7 @@ class Double_Dueling_DQN(nn.Module):
 def training_dddqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log ='restart_best_rewards',
                    collision_reward=-2, load_path = None):
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    logger.info(f'---------- device  =  {device} ')
 
     replay_buffer = deque(maxlen=BUFFER_SIZE)
     info_buffer = deque(maxlen=100)
@@ -260,12 +260,12 @@ def training_dddqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log
 
             if mean_rew > last_rew:
                 logger.info(f"\n*****\nCkeckpoint for best model with reward = {mean_rew} at step {step}. Saving model weights. Epsilon={epsilon}.")
-                online_net.save_best_last(best=True)
+                online_net.save_best_last(best=True, optimizer=optimizer)
                 last_rew = mean_rew
 
             logger.info(
                 f"\nCkeckpoint for last model with reward = {mean_rew} at step {step}. Saving model weights....")
-            online_net.save_best_last(best=False)
+            online_net.save_best_last(best=False, optimizer=optimizer)
 
             logger.info(f'Episode: {step}\nReward  == {mean_rew}\nDuration == {mean_duration}. Epsilon={epsilon}.')
 

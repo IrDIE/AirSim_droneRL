@@ -24,11 +24,12 @@ from random import sample
 ActType = TypeVar("ActType")
 ObsType = TypeVar("ObsType")
 
-RESCALE_N = 1
+RESCALE_N = 0.35
 RANDOM_SEED = 42
 COLLISION_REWARD = -2
 clock_speed = 10 # in cfg
 ACTION_DURATION = 1 / clock_speed
+RESIZE_OBSERVATION = (64, 64)
 
 
 class AirSimGym_env(Env):
@@ -352,8 +353,12 @@ class AirSimGym_env(Env):
         if self.observation_as_depth:
             cmap = get_cmap('jet')
             depth_map_heat = cmap(raw_observation)[:, :, :3] # already normalized from 0 to 1
-            image_scaled = cv2.resize(depth_map_heat,
-                                            (depth_map_heat.shape[1] * RESCALE_N, depth_map_heat.shape[0] * RESCALE_N))
+            if RESIZE_OBSERVATION is not None:
+                image_scaled = cv2.resize(depth_map_heat, RESIZE_OBSERVATION)
+
+            else:
+                image_scaled = cv2.resize(depth_map_heat,
+                                            (int(depth_map_heat.shape[1] * RESCALE_N), int(depth_map_heat.shape[0] * RESCALE_N)))
 
         else:
             mono_image = raw_observation # already normalized from 0 to 1
@@ -444,13 +449,6 @@ def make_airsim_deepmind(airsim_env_class, max_episode_steps=None, skip=2):
 
     if max_episode_steps is not None:
         env = TimeLimit(env, max_episode_steps=max_episode_steps)
-
-    # env = EpisodicLifeEnv(env)
-
-    #env = WarpFrame(env)
-
-    # if scale_values:
-    #     env = ScaledFloatFrame(env)
 
     env = TransposeImageObs(env, axis_order=[2, 0, 1])  # Convert to torch order (C, H, W)
     return env
