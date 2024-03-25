@@ -18,7 +18,7 @@ GAMMA = 0.99 # DISCOUNT RATE
 
 BATCH_SIZE = 8 # 128 #32 # FROM REPLAY BUFFER
 BUFFER_SIZE = 500_000
-MIN_REPLAY_SIZE = 50_000 #1000
+MIN_REPLAY_SIZE = 10 #50_000 #1000
 
 EPSILON_START = 0.9 # E GREEDY POLICY
 EPSILON_END = 0.02
@@ -28,12 +28,13 @@ LR = 5e-5
 
 NUM_ENVS = 1
 TARGET_UPDATE_FREQ = 10_000 // NUM_ENVS
-LOGGING_INTERVAL = 150 #30 #
+LOGGING_INTERVAL = 5 # 150 #30 #
 RESTART_EXE = 1000
 
 class Double_Dueling_DQN(nn.Module):
-    def __init__(self, env, save_path, load_path):
+    def __init__(self, env, save_path, load_path, device):
         super(Double_Dueling_DQN, self).__init__()
+        self.device = device
         self.not_calculated_flatten = True
         self.action_shape = env.action_space.n
         self.convNet = self.get_conv_net(env)
@@ -53,7 +54,7 @@ class Double_Dueling_DQN(nn.Module):
 
 
     def action(self, states, epsilon, inference=False):
-        states = torch.tensor(states, dtype=torch.float32)
+        states = torch.tensor(states, dtype=torch.float32, device=self.device)
         _, advantage = self.forward(states) # in online net -> get action advantage
         max_indexs = torch.argmax(advantage, dim=1)
         actions = max_indexs.detach().tolist()
@@ -90,10 +91,8 @@ class Double_Dueling_DQN(nn.Module):
         self.convNet_ = nn.Sequential(
             nn.Conv2d(self.in_channels[0], 32, kernel_size=(8, 8), stride=3),
             nn.ReLU(),
-
             nn.Conv2d(32, 64, kernel_size=(4, 4), stride=2),
             nn.ReLU(),
-
             nn.Conv2d(64, 64, kernel_size=(3, 3), stride=1),
             nn.ReLU(),
             nn.Flatten()
@@ -116,17 +115,17 @@ class Double_Dueling_DQN(nn.Module):
     def compute_loss(self, target_net, trg):
         # trg - state, action, reward, terminated, truncated, new_state
         states_ = [t[0] for t in trg]
-        actions = torch.as_tensor(np.asarray([t[1] for t in trg]), dtype=torch.int64).unsqueeze(-1)
-        rews = torch.as_tensor(np.asarray([t[2] for t in trg]), dtype=torch.float32).unsqueeze(-1)
-        dones = torch.as_tensor(np.asarray([t[3] or t[4] for t in trg]), dtype=torch.float32).unsqueeze(-1)
+        actions = torch.as_tensor(np.asarray([t[1] for t in trg]), dtype=torch.int64, device=self.device).unsqueeze(-1)
+        rews = torch.as_tensor(np.asarray([t[2] for t in trg]), dtype=torch.float32, device=self.device).unsqueeze(-1)
+        dones = torch.as_tensor(np.asarray([t[3] or t[4] for t in trg]), dtype=torch.float32, device=self.device).unsqueeze(-1)
         new_states_ = [t[5] for t in trg]
 
         if isinstance(states_[0], PytorchLazyFrames):
-            states = torch.as_tensor(np.stack([lazy_frames.get_frames() for lazy_frames in states_]), dtype=torch.float32)
-            new_states = torch.as_tensor(np.stack([lazy_frames.get_frames() for lazy_frames in new_states_]), dtype=torch.float32)
+            states = torch.as_tensor(np.stack([lazy_frames.get_frames() for lazy_frames in states_]), dtype=torch.float32, device=self.device)
+            new_states = torch.as_tensor(np.stack([lazy_frames.get_frames() for lazy_frames in new_states_]), dtype=torch.float32, device=self.device)
         else :
-            states = torch.as_tensor(states_, dtype=torch.float32)
-            new_states = torch.as_tensor(np.asarray(new_states_), dtype=torch.float32)
+            states = torch.as_tensor(states_, dtype=torch.float32, device=self.device)
+            new_states = torch.as_tensor(np.asarray(new_states_), dtype=torch.float32, device=self.device)
 
         # for double:
         V_states, A_states = self.forward(states)
@@ -180,10 +179,12 @@ class Double_Dueling_DQN(nn.Module):
 
 def training_dddqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log ='restart_best_rewards',
                    collision_reward=-2, load_path = None):
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
     replay_buffer = deque(maxlen=BUFFER_SIZE)
     info_buffer = deque(maxlen=100)
-    online_net = Double_Dueling_DQN(env=env, save_path=save_path, load_path = load_path)
-    target_net = Double_Dueling_DQN(env=env, save_path=save_path, load_path=load_path)
+    online_net = Double_Dueling_DQN(env=env, save_path=save_path, device=device,load_path = load_path).to(device)
+    target_net = Double_Dueling_DQN(env=env, save_path=save_path, device=device,load_path=load_path).to(device)
 
     optimizer = Adam(lr=LR, params=online_net.parameters())
     tb_summary = SummaryWriter(logg_tb)
