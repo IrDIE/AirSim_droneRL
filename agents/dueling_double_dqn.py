@@ -17,14 +17,14 @@ warnings.filterwarnings('ignore')
 GAMMA = 0.99 # DISCOUNT RATE
 BATCH_SIZE = 32 # 128 #32 # FROM REPLAY BUFFER
 BUFFER_SIZE = 500_000
-MIN_REPLAY_SIZE = 400 #50_000
+MIN_REPLAY_SIZE = 50_000 #50_000
 EPSILON_START = 0.9 # E GREEDY POLICY
 EPSILON_END = 0.1
 EPSILON_DECAY = 500_000
 LR = 5e-5
 NUM_ENVS = 1
 TARGET_UPDATE_FREQ = 10_000 // NUM_ENVS
-LOGGING_INTERVAL = 5 # 150
+LOGGING_INTERVAL = 3 # 150
 RESTART_EXE = 1000
 
 class Double_Dueling_DQN(nn.Module):
@@ -126,9 +126,9 @@ class Double_Dueling_DQN(nn.Module):
 
         # for double:
         V_states, A_states = self.forward(states)
-        logger.info(f'onl forwd')
+
         V_new_states, A_new_states = target_net.forward(new_states)
-        logger.info(f'trg forwd')
+
 
         V_s_eval, A_s_eval = self.forward(new_states)
         q_pred = torch.add(V_states,
@@ -170,6 +170,7 @@ class Double_Dueling_DQN(nn.Module):
     def load_weights(self, path, optimizer : torch.optim.Adam =None):
         if optimizer is not None:
             ckpt_info = torch.load(path)
+            logger.info(f'ckpt_info loaded with keys = {ckpt_info.keys()}')
             self.load_state_dict(ckpt_info['model_state_dict'])
             optimizer.load_state_dict(ckpt_info['optimizer_state_dict'])
 
@@ -204,42 +205,63 @@ def training_dddqn(env, logg_tb, epoch, save_path, reward_loggs, csv_rewards_log
     # init replay buffer before training
     states = env.reset()
     for i in range(MIN_REPLAY_SIZE):
+        if i % LOGGING_INTERVAL == 0: logger.info(f'COLLECTING REPLAY BUFFER at step = {i}')
+        try:
+            actions = [env.action_space.sample() for _ in range(NUM_ENVS)]  # sample from env randomly
+            new_states, rewards, terminateds, truncateds, infos = env.step(actions)
+        except ValueError as e:
+            if str(e) == 'cannot reshape array of size 1 into shape (0,0)':
+                logger.info(f'Recovering from AirSim error in replay buffer. i = {i}')
+                states = env.reset()
+                actions = [env.action_space.sample() for _ in range(NUM_ENVS)]
+                new_states, rewards, terminateds, truncateds, infos = env.step(actions)
 
-        actions = [env.action_space.sample() for _ in range(NUM_ENVS)]  # sample from env randomly
-        new_states, rewards, terminateds, truncateds, infos = env.step(actions)
-        #logger.info(f'replay {i}, terminateds={terminateds}, truncateds={truncateds}')
+            #logger.info(f'replay {i}, terminateds={terminateds}, truncateds={truncateds}')
+
         for state, action, reward, terminated, truncated, new_state in zip(states, actions, rewards, terminateds, truncateds, new_states):
             transition = (state, action, reward, terminated, truncated, new_state)
             replay_buffer.append(transition)
+            logger.info(f'appended in buffer')
         states = new_states
+
 
     # main training loop
     states = env.reset()
     logger.info(f'\n***\nFinish collect buffer. Start main training....')
-
     last_rew = collision_reward
     for step in itertools.count():
         # select action
         epsilon = np.interp(step * NUM_ENVS, [0, EPSILON_DECAY], [EPSILON_START, EPSILON_END])
+
         if isinstance(states[0], PytorchLazyFrames):
             states_ = np.stack([lasy.get_frames() for lasy in states])
             actions = online_net.action(states_, epsilon)
         else:
             actions = online_net.action(states, epsilon)  # epsilon - random policy now inside .action
-
         # take action
-        new_states, rewards, terminateds, truncateds, infos = env.step(actions)
+        try:
+            new_states, rewards, terminateds, truncateds, infos = env.step(actions)
+        except ValueError as e:
+            if str(e) == 'cannot reshape array of size 1 into shape (0,0)':
+                logger.info(f'Recovering from AirSim error in main training. step = {step}')
+                states = env.reset()
+                if isinstance(states[0], PytorchLazyFrames):
+                    states_ = np.stack([lasy.get_frames() for lasy in states])
+                    actions = online_net.action(states_, epsilon)
+                else:
+                    actions = online_net.action(states, epsilon)  # epsilon - random policy now inside .action
+
+                new_states, rewards, terminateds, truncateds, infos = env.step(actions)
+
 
         for state, action, reward, terminated, truncated, new_state, info in zip(states, actions, rewards, terminateds, truncateds, new_states, infos):
             transition = (state, action, reward, terminated, truncated, new_state)
             replay_buffer.append(transition)
-
             if terminated or truncated:
                 info_buffer.append(info['episode'])
                 episode_count += 1
 
         states = new_states
-
         transition_sample = random.sample(replay_buffer, BATCH_SIZE)
         loss = online_net.compute_loss(target_net, transition_sample)
         optimizer.zero_grad()

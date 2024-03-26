@@ -153,15 +153,15 @@ def train_outroor_DDDQN(logg_tb, save_path, epoch, reward_loggs, height_airsim_r
         res = training_dddqn(env, logg_tb=logg_tb, epoch=epoch, save_path=save_path, load_path=load_path,
                              reward_loggs=reward_loggs)
         close_env(env_process)
-    except ValueError as e:
-        if str(e) == 'cannot reshape array of size 1 into shape (0,0)':
-            logger.info('Recovering from AirSim error')
-            close_env(env_process)
-            res = -2
-    # except Exception as restart:
-    #     logger.info(f'API is dead... \n{str(restart)}\nClose .exe ')
-    #     close_env(env_process)
-    #     res = -2
+    # except ValueError as e:
+    #     if str(e) == 'cannot reshape array of size 1 into shape (0,0)':
+    #         logger.info('Recovering from AirSim error')
+    #         close_env(env_process)
+    #         res = -2
+    except Exception as restart:
+        logger.info(f'\nAPI is dead... \n{str(restart)}\nClose .exe ')
+        close_env(env_process)
+        res = -2
 
     return res
 

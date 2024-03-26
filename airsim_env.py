@@ -1,3 +1,5 @@
+import random
+
 from loguru import logger
 
 from gymnasium import Env
@@ -163,7 +165,6 @@ class AirSimGym_env(Env):
         self.client.moveByAngleZAsync(0,0,z,yaw_rad,1)#.join()
         #self.client.moveByVelocityAsync(0, 0, z, 1, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False))
 
-
     def rotate_right(self):
         yaw_deg, yaw_rad = self.get_yaw()
         yaw_rad += math.radians(10)
@@ -193,9 +194,6 @@ class AirSimGym_env(Env):
         self.client.moveByVelocityAsync(0, 0, z , ACTION_DURATION, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False))#.join()
         #self.client.moveByVelocityAsync(0, 0, 0, ACTION_DURATION, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False))#.join()
         #
-
-
-    # <---------
 
     def step_continuous(self, action):
         """
@@ -298,7 +296,9 @@ class AirSimGym_env(Env):
     def reset(self, seed=None, options=None, level = 0):
         self.level = 0
         # self.client.confirmConnection()
+        self.client.reset()
         self.client.enableApiControl(True, self.vehicle_name)
+        self.client.armDisarm(True)
         if seed is None:
             np.random.seed(RANDOM_SEED)
             self.np_random = np.random.default_rng()
@@ -415,6 +415,9 @@ def get_DepthImageRGB(client, vehicle_name, env_type):
         responses = client.simGetImages([airsim.ImageRequest(camera_name, airsim.ImageType.DepthVis, True)],
                                              vehicle_name=vehicle_name)
         responses = responses[0]
+        # if random.random() > 0.98:
+        #     logger.info(f'manually call error cannot reshape array of size 1 into shape (0,0)')
+        #     raise ValueError('cannot reshape array of size 1 into shape (0,0)')
         if responses.width == 0:
             logger.info(f'\n /// BUG ***\n')
             logger.info(f'responses =BUG= {responses}')
