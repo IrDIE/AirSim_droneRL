@@ -1,11 +1,14 @@
-import random
-
+from utils.utils import generate_json
+import subprocess
 from loguru import logger
-
+from utils.utils import read_cfg, generate_json_simple_maze, create_folder, load_save_logg_reward, visualize_observation
 from gymnasium import Env
 from gymnasium.spaces import Discrete
 from gymnasium.spaces import Box
-
+from baselines_wrappers.monitor import Monitor
+from baselines_wrappers.dummy_vec_env import DummyVecEnv
+from utils.pytorch_wrappers import BatchedPytorchFrameStack
+from utils.initial_positions import get_airsim_position
 import numpy as np
 import math
 from airsim.utils import to_eularian_angles
@@ -28,17 +31,19 @@ ObsType = TypeVar("ObsType")
 
 RESCALE_N = 0.35
 RANDOM_SEED = 42
-COLLISION_REWARD = -2
-clock_speed = 10 # in cfg
-ACTION_DURATION = 1 / clock_speed
-RESIZE_OBSERVATION = (64, 64)
-
+COLLISION_REWARD = -1
+clock_speed = 2 # in cfg
+ACTION_DURATION = 0.5 / clock_speed
+RESIZE_OBSERVATION = (128,128) #(64, 64)
+NUM_ENVS = 1
 
 class AirSimGym_env(Env):
-    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
-    def __init__(self, client : MultirotorClient, env_type, vehicle_name, initial_positions, observation_as_depth,height_airsim_restart_positions, done_xy=None, max_yaw_or_rate = 90, action_type = 'discrete'):
+
+    def __init__(self, client : MultirotorClient, env_type, vehicle_name, initial_positions, \
+                 observation_as_depth, height_airsim_restart_positions, get_vel_obs = False, done_xy=None, max_yaw_or_rate = 90, action_type = 'discrete'):
         super().__init__()
         self.observation_as_depth = observation_as_depth
+        self.get_vel_obs = get_vel_obs
         self.client = client
         self.action_type = action_type # 'continuous' or 'discrete'
         self.env_type = env_type # outdoor or indoor - reward generation differ
@@ -48,31 +53,27 @@ class AirSimGym_env(Env):
         self.done_xy = done_xy
         self.level = 0
         if action_type == 'continuous':
-            self.action_space = Box( low=-1., high=1., shape=(4,),dtype=np.float32)
+            self.action_space = Box( low=-1.5, high=1.5, shape=(3,), dtype=np.float32)
         else:
             self.action_space = Discrete(6) #[0,1,2,3,4,5]
 
         self.noop_action = self.define_noop_action()
         self.observation_shape = self.get_observation().shape #logger.info(f'self.observation_shape = {self.observation_shape}') # (360, 640, 3)
-        logger.info(f'self.observation_shape = {self.observation_shape}')
+
         self.observation_space = Box(
             low=0., high=1., shape=self.observation_shape, dtype=np.float32 # 3 channels
         )
         self.height_airsim_restart_positions = height_airsim_restart_positions # [-5.35,-5.4, -6.5,-7.6,-8.5, -9. ] # restart height -- depends on environment
         self.reward_range = None
         self.initial_positions = initial_positions # select random pose from inital posinionы for outdoor or indoor
-
+    def get_reward_from_action(self, action):
+        if action == 1 : return 0.12
+        elif action ==0: return -0.02
+        else: return  0.04
     def step_discrete(self, action):
-        # # FOR DEBUG
-        # reset_pos = airsim.Pose(airsim.Vector3r(0, 60, -0.8339),
-        #                         airsim.to_quaternion(0, 0, (0) * np.pi / 180))
-        # self.client.simSetVehiclePose(reset_pos, ignore_collison=True, vehicle_name='drone0')
 
-        #self.client.simPause(False)
-
-
-        if type(action) == int and action == self.noop_action: # == if action == 0: pass
-            pass
+        if action == 0: # == if action == 0: pass
+            self.not_move()
         # forward
         if action == 1: self.move_forward()
 
@@ -87,13 +88,12 @@ class AirSimGym_env(Env):
 
         # down
         if action == 5: self.move_down()
-        #self.client.simPause(True)
+
         observation = self.get_observation()
         info = self._get_info()
 
         reward, terminated, truncated = self.compute_reward_maze()  # TODO - define rewarn calculation function
         # logger.info(f'action = {action}')
-        if action == 1: reward += 0.1
 
         return observation, reward, terminated, truncated, info
 
@@ -101,51 +101,50 @@ class AirSimGym_env(Env):
         truncated = False
         terminated = False
         out_of_env = False
-        reward = 0
-        y_current = 0
         min_speed = 0.2
         levels = [7,17,28,45,57]
-
-
         if_collision = self.client.simGetCollisionInfo(vehicle_name=self.vehicle_name).has_collided
+        # logger.info(f'if_collision={if_collision}')
+
+        if if_collision:
+            # logger.info(f'COLLISION')
+            reward = COLLISION_REWARD # -2
+            terminated = True # if collision
+            return reward, terminated, truncated
         kinematic = self.client.getMultirotorState(vehicle_name=self.vehicle_name).kinematics_estimated
         position = kinematic.position
         quad_vel=kinematic.linear_velocity
         vel = np.array([quad_vel.x_val, quad_vel.y_val, quad_vel.z_val], dtype=np.float32)
-        if if_collision:
-            # logger.info(f'COLLISION')
-            reward = COLLISION_REWARD
-            terminated = True # if collision
-            return reward, terminated, truncated
-
         speed_current = np.linalg.norm(vel)
-        #logger.info(f'speed_current={speed_current}')
 
 
+
+        # reward = float(vel[1])
         if position.y_val > levels[self.level]:
             self.level +=1
-            reward = (2.)*(1 + self.level / len(levels))
+            reward = (-COLLISION_REWARD)*(1+self.level / len(levels))
         elif speed_current < min_speed:
-            reward = -0.05
+            reward = -0.05 # slow
         else:
-            reward = float(vel[1])  # y-positive velocity
-
+            reward = float(vel[1]) * 0.1
 
         if self.done_xy is not None:
             out_of_maze = self.check_if_out_of_env(position = position)
-            floor = True if position.z_val >  1.19 else False
+            floor = True if position.z_val >  1.165 else False
             out_of_env = floor or out_of_maze
-            #logger.info(f'out_of_env = {out_of_env}')
-        truncated = False if not out_of_env else True
-        # logger.info(f'reward={reward}. position.y_val={position.y_val}')
-        return reward, terminated, truncated
 
+        truncated = False if not out_of_env else True
+        # logger.info(f'\n** reward={reward}. position.y_val={position.y_val}, position.z_val={position.z_val}')
+        return reward, terminated, truncated
     def get_yaw(self):
         quaternions = self.client.getMultirotorState().kinematics_estimated.orientation
         a, b, yaw_rad = to_eularian_angles(quaternions)
         yaw_deg = math.degrees(yaw_rad)
         return yaw_deg, yaw_rad
-
+    def not_move(self):
+        yaw_deg, yaw_rad = self.get_yaw()
+        z = self.client.simGetGroundTruthKinematics().position.z_val
+        self.client.moveByAngleZAsync(0, 0, z, yaw_rad, ACTION_DURATION)
     def move_forward(self):
         yaw_deg, yaw_rad = self.get_yaw()
         z = self.client.simGetGroundTruthKinematics().position.z_val
@@ -154,42 +153,36 @@ class AirSimGym_env(Env):
         vy = math.sin(yaw_rad) * 0.35
         #logger.info(f'vx={vx}, vy={vy}')
         self.client.moveByVelocityAsync(vx , vy , 0, ACTION_DURATION, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False))#.join()
-
-
     def rotate_left(self):
         yaw_deg, yaw_rad = self.get_yaw()
         z = self.client.simGetGroundTruthKinematics().position.z_val
         yaw_rad -= math.radians(10)
         self.client.moveByVelocityAsync(0, 0, z, ACTION_DURATION, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False)).join()
 
-        self.client.moveByAngleZAsync(0,0,z,yaw_rad,1)#.join()
+        self.client.moveByAngleZAsync(0,0,z,yaw_rad,ACTION_DURATION)#.join()
         #self.client.moveByVelocityAsync(0, 0, z, 1, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False))
-
     def rotate_right(self):
         yaw_deg, yaw_rad = self.get_yaw()
         yaw_rad += math.radians(10)
         z = self.client.simGetGroundTruthKinematics().position.z_val
         self.client.moveByVelocityAsync(0, 0, z, ACTION_DURATION, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False)).join()
 
-        self.client.moveByAngleZAsync(0,0,z,yaw_rad,1)#.join()
+        self.client.moveByAngleZAsync(0,0,z,yaw_rad,ACTION_DURATION)#.join()
         #self.client.moveByVelocityAsync(0, 0, z, 1, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False))
-
-
     def move_up(self):
         linear_velocity = self.client.simGetGroundTruthKinematics().linear_velocity
         x, y, z = linear_velocity.x_val, linear_velocity.y_val, linear_velocity.z_val
-        z -= 0.007
+        z -= 0.05
 
         self.client.moveByVelocityAsync(0,0, z, ACTION_DURATION, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False))#.join()
         #self.client.moveByVelocityAsync(0, 0, 0, ACTION_DURATION, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False))#.join()
         #
-
     def move_down(self):
         kinematic = self.client.simGetGroundTruthKinematics()
         # logger.info(f'kinematic z = {kinematic.position.z_val}')
         linear_velocity = kinematic.linear_velocity
         x, y, z = linear_velocity.x_val, linear_velocity.y_val, linear_velocity.z_val
-        z += 0.009
+        z += 0.07
 
         self.client.moveByVelocityAsync(0, 0, z , ACTION_DURATION, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False))#.join()
         #self.client.moveByVelocityAsync(0, 0, 0, ACTION_DURATION, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False))#.join()
@@ -197,40 +190,36 @@ class AirSimGym_env(Env):
 
     def step_continuous(self, action):
         """
-                :param action: array with 4 floats from -1 to 1 : x,y,z velocities and yaw_or_rate
-                :return:
-                """
-        if type(action) == int and action == self.noop_action:
-            pass
-        else:
-            vx, vy, vz, yaw_or_rate = action
-            yaw_or_rate = (yaw_or_rate) * self.max_yaw_or_rate
-            start = time.time()
+        :param action: array with 3 floats from -1 to 1 : x,y,z velocities and yaw_or_rate
+        :return:
+        """
+        vx, vy, vz = action
 
-            self.client.moveByVelocityAsync(vx=float(vx), vy=float(vy), vz=float(vz), duration=1,
-                                            drivetrain=airsim.DrivetrainType.MaxDegreeOfFreedom,
-                                            yaw_mode=airsim.YawMode(is_rate=self.is_rate,
-                                                                    yaw_or_rate=float(yaw_or_rate)),
-                                            vehicle_name=self.vehicle_name)
+        self.client.moveByVelocityAsync(vx=float(vx), vy=float(vy), vz=float(vz), duration=ACTION_DURATION,
+                                        vehicle_name=self.vehicle_name)
 
-            # for i in range(3):
-            #     logger.info(f'\n*{i} in step **\n{self._get_info(get_kinematic=True)}')
-            #     time.sleep(0.1)
-            # do one step in environment that corresponds to action
+        # do one step in environment that corresponds to action
         observation = self.get_observation()
-        reward, done = self.compute_reward()  # TODO - define rewarn calculation function
         info = self._get_info()
-        return observation, reward, done, info
+        reward, terminated, truncated = self.compute_reward_maze()
+
+        return observation, reward, terminated, truncated, info
 
     def step(self, action):
+        self.client.simPause(False)
 
         if self.action_type == 'discrete':
-            return self.step_discrete(action)
-
-        elif self.action_type == 'continuous':
-            raise NotImplementedError() #return self.step_continuous(action)
+            observation, reward, terminated, truncated, info = self.step_discrete(action)
         else:
-            raise KeyError(f"self.action_type = {self.action_type} is invalid. discrete or continuous are available =)")
+            observation, reward, terminated, truncated, info = self.step_continuous(action)
+
+        self.client.simPause(True)
+        if self.get_vel_obs :
+            vel = self._get_info(get_kinematic=True)
+
+            observation = [observation, vel]
+        return observation, reward, terminated, truncated, info
+
 
     def check_if_out_of_env(self, position):
 
@@ -267,7 +256,6 @@ class AirSimGym_env(Env):
         # logger.info(f'self.max_distance_xy={self.max_distance_xy}')
         # logger.info(f'distance / self.max_distance_xy={distance / self.max_distance_xy}')
 
-
         return reward
     def compute_reward_indoor(self):
         raise NotImplementedError("compute_reward_indoor Not Implemented")
@@ -279,7 +267,7 @@ class AirSimGym_env(Env):
         if self.done_xy is not None:
             out_of_env, y_current = self.check_if_out_of_env(get_y=True)
         if if_collision:
-            reward = -10
+            reward = COLLISION_REWARD
             terminated = True
             return reward, terminated, truncated
         else:
@@ -293,15 +281,14 @@ class AirSimGym_env(Env):
             else:
                 raise KeyError(f"self.env_type = {self.env_type} is invalid. indoor or outdoor are available =)")
 
-    def reset(self, seed=None, options=None, level = 0):
+    def reset(self, options=None, level = 0):
         self.level = 0
+        logger.info(f'doing reset')
         # self.client.confirmConnection()
         self.client.reset()
         self.client.enableApiControl(True, self.vehicle_name)
         self.client.armDisarm(True)
-        if seed is None:
-            np.random.seed(RANDOM_SEED)
-            self.np_random = np.random.default_rng()
+
 
         # select random pose from inital posinion and generate z
         self.client.simPause(False)
@@ -319,22 +306,28 @@ class AirSimGym_env(Env):
         reset_pos = airsim.Pose(airsim.Vector3r(x, y, reset_height),
                                airsim.to_quaternion(0, 0, (angle)*np.pi/180))
 
-        # self.client.moveByVelocityAsync(0, 0, -1, 2 * ACTION_DURATION).join()
         self.client.moveByVelocityAsync(0, 0, 0, 2 * ACTION_DURATION).join()
         self.client.simSetVehiclePose(reset_pos, ignore_collison=True, vehicle_name=self.vehicle_name)
         self.client.simPause(True)
         self.client.hoverAsync().join()
-        # logger.info(f'in reset')
+        # logger.info(f'self.get_observation()')
         observation = self.get_observation()
-        info = self._get_info()
-        time.sleep(1)
+        info = {}
+        if self.get_vel_obs :
+            vel = self._get_info(get_kinematic=True)
+            observation = [observation, vel]
+        time.sleep(0.5)
         self.client.simPause(False)
-
         return observation, info
 
     def _get_info(self, get_kinematic = False):
 
-        if get_kinematic : return self.client.simGetGroundTruthKinematics()
+        if get_kinematic :
+            kinematic = self.client.getMultirotorState(vehicle_name=self.vehicle_name).kinematics_estimated
+            position = kinematic.position
+            quad_vel = kinematic.linear_velocity
+            vel = np.array([quad_vel.x_val, quad_vel.y_val, quad_vel.z_val], dtype=np.float32)
+            return vel
         else : return {}
 
 
@@ -343,42 +336,110 @@ class AirSimGym_env(Env):
         AirSim observation : image from fpv-camera of drone
         :return:
         """
-        if depth: observation = get_DepthImageRGB(self.client, self.vehicle_name, self.env_type)
+        if depth: observation = get_DepthImageRGB(self.client, self.vehicle_name)
         else : observation = get_MonocularImageRGB(self.client, self.vehicle_name)
         return observation
 
-    def get_observation(self, rescale_n = RESCALE_N):
+    def get_observation(self):
 
         raw_observation = self.get_raw_observ(depth = self.observation_as_depth)
-        if self.observation_as_depth:
-            cmap = get_cmap('jet')
-            depth_map_heat = cmap(raw_observation)[:, :, :3] # already normalized from 0 to 1
-            if RESIZE_OBSERVATION is not None:
-                image_scaled = cv2.resize(depth_map_heat, RESIZE_OBSERVATION)
+        # logger.info(f'got raw_observation **** 1 str in git')
+        #
+        # while True:
+        #     cv2.imshow('raw_observation', raw_observation)
+        #     if cv2.waitKey(1) & 0xFF == ord('q'):
+        #         break
+        #
+        # while True:
+        #     cv2.imshow('raw_observation * 3', raw_observation * 3)
+        #     if cv2.waitKey(1) & 0xFF == ord('q'):
+        #         break
 
-            else:
-                image_scaled = cv2.resize(depth_map_heat,
-                                            (int(depth_map_heat.shape[1] * RESCALE_N), int(depth_map_heat.shape[0] * RESCALE_N)))
+        if self.observation_as_depth:
+            raw_observation = np.clip(raw_observation * 3, 0, 254.5)
+            image_scaled = raw_observation / 255.0
+
+            # logger.info(f'image_scaled shape={np.shape(image_scaled)}')
+            # cmap = get_cmap('jet')
+
+            # c_map_depth = cmap(raw_observation)
+            # logger.info(f'c_map_depth shape={np.shape(c_map_depth)}\nc_map_depth[0] = {c_map_depth[:, :, 0].min()}, {c_map_depth[:, :, 0].max()}')
+            # logger.info(f'\nc_map_depth[1] = {c_map_depth[:, :, 1].min()}, {c_map_depth[:, :, 1].max()}')
+            # logger.info(f'\nc_map_depth[2] = {c_map_depth[:, :, 2].min()}, {c_map_depth[:, :, 2].max()}')
+            # logger.info(f'\nc_map_depth[3] = {c_map_depth[:, :, 3].min()}, {c_map_depth[:, :, 3].max()}')
+            # depth_map_heat = c_map_depth[:, :, 2] # already normalized from 0 to 1
+            # image_scaled = depth_map_heat[..., None]
 
         else:
             mono_image = raw_observation # already normalized from 0 to 1
-            image_scaled = cv2.resize(mono_image,
-                                            (mono_image.shape[1] * RESCALE_N, mono_image.shape[0] * RESCALE_N))
+            image_scaled = cv2.resize(mono_image, (mono_image.shape[1] * RESCALE_N, mono_image.shape[0] * RESCALE_N))
 
+        # while True:
+        #     cv2.imshow('raw_observation clipped', raw_observation)
+        #     if cv2.waitKey(1) & 0xFF == ord('q'):
+        #         break
+
+        image_scaled = image_scaled[..., None]
         return image_scaled
 
     def define_noop_action(self):
         return 0
 
-    def render(self):
-        """
-        check 'debug' mode in PEDRA 2-0 -> how it rendered
-        :return:
-        """
-        pass
 
-    def close(self, env_process):
-        close_env(env_process)
+
+
+def start_environment(exe_path):
+    path = exe_path
+    # env_process = []
+    env_process = subprocess.Popen(path)
+    time.sleep(5)
+    logger.info("Successfully loaded environment: " + exe_path)
+    return env_process
+
+
+def connect_drone(ip_address='127.0.0.5', num_agents=1, client=[]):
+    if client != []:
+        client.reset()
+    client = airsim.MultirotorClient(ip=ip_address, timeout_value=10)
+    client.confirmConnection()
+    time.sleep(0.1)
+
+
+    for agents in range(num_agents):
+        name_agent = "drone" + str(agents)
+        client.enableApiControl(True, name_agent)
+        client.armDisarm(True, name_agent)
+        client.takeoffAsync(vehicle_name=name_agent)
+        time.sleep(0.1)
+
+    return client
+
+
+def connect_exe_env(exe_path, name, documents_path, stack_last_k,get_vel_obs, height_airsim_restart_positions,action_type, env_type='outdoor', max_episode_steps=100 ):
+    cfg = read_cfg(config_filename='./configs/config.cfg', verbose=False)
+    cfg.num_agents = 1
+    restart_positions, airsim_positions_raw, done_xy = get_airsim_position(name=name)
+    generate_json(cfg, initial_positions=airsim_positions_raw, documents_path=documents_path)
+
+    env_process = start_environment(exe_path)
+    client = connect_drone()  # first takeoff
+
+    env_airsim = AirSimGym_env(client, env_type=env_type, vehicle_name='drone0', action_type=action_type, get_vel_obs=get_vel_obs,
+                               initial_positions=restart_positions, observation_as_depth=True, done_xy=done_xy, height_airsim_restart_positions = height_airsim_restart_positions)
+
+    if get_vel_obs:
+        logger.info(f'return ')
+        return env_airsim, env_process
+
+    make_env = lambda: Monitor(make_airsim_deepmind(env_airsim, max_episode_steps=max_episode_steps),
+                               allow_early_resets=True)
+    vec_env = DummyVecEnv([make_env for _ in range(NUM_ENVS)])
+
+
+    # set batched environment
+
+    env = BatchedPytorchFrameStack(vec_env, k=stack_last_k) # stack_last_k = 4
+    return env, env_process
 
 
 def close_env(env_process):
@@ -389,43 +450,29 @@ def close_env(env_process):
     logger.info("Environment closed")
 
 
-def get_DepthImageRGB(client, vehicle_name, env_type):
+def get_DepthImageRGB(client, vehicle_name):
     camera_name = 1
-    max_tries = 15
+    max_tries = 5
     tries = 0
     correct = False
-    # if env_type == 'indoor':
-    #
-    #     while not correct and tries < max_tries: # TODO - chech how it will work for indoor environment
-    #         tries += 1
-    #         responses = client.simGetImages(
-    #             [airsim.ImageRequest(camera_name, airsim.ImageType.DepthVis, False, False)],
-    #             vehicle_name=vehicle_name)[0]
-    #         img1d = np.fromstring(responses.image_data_uint8, dtype=np.uint8)
-    #         # AirSim bug: Sometimes it returns invalid depth map with a few 255 and all 0s
-    #         if np.max(img1d) == 255 and np.mean(img1d) < 0.05:
-    #             correct = False
-    #         else:
-    #             correct = True
-    #
-    #     depth = img1d.reshape(responses.height, responses.width, 3)[:, :, 0]
-    # elif env_type == 'outdoor':
     while not correct and tries < max_tries: # TODO - chech how it will work for indoor environment
         tries += 1
         responses = client.simGetImages([airsim.ImageRequest(camera_name, airsim.ImageType.DepthVis, True)],
                                              vehicle_name=vehicle_name)
         responses = responses[0]
-        # if random.random() > 0.98:
-        #     logger.info(f'manually call error cannot reshape array of size 1 into shape (0,0)')
-        #     raise ValueError('cannot reshape array of size 1 into shape (0,0)')
+        if int(responses.width) == 128:
+            correct = True
         if responses.width == 0:
             logger.info(f'\n /// BUG ***\n')
             logger.info(f'responses =BUG= {responses}')
             logger.info(f'responses.width, responses.height = {responses.width, responses.height}')
 
+        # logger.info(f'responses.width={responses.width}\n1 max responses.image_data_float={max(responses.image_data_float)}, min={min(responses.image_data_float)}')
+        # logger.info(f'responses.image_data_float shape={np.shape(responses.image_data_float)}')
+
         depth = airsim.list_to_2d_float_array(responses.image_data_float, responses.width, responses.height)
-        if responses.width == 320:
-            correct = True
+
+        # logger.info(f'2 max depth={max(depth[0])}, min{min(depth[0])}, depth shape (raw_observation) = {np.shape(depth)}')
 
     return depth
 
@@ -445,10 +492,10 @@ def get_MonocularImageRGB(client, vehicle_name):
 
     return camera_image
 
-def make_airsim_deepmind(airsim_env_class, max_episode_steps=None, skip=2):
+def make_airsim_deepmind(airsim_env_class, max_episode_steps=None):
     env = airsim_env_class # gym.make(env_id, new_step_api =False , render_mode=render_mode) # apply_api_compatibility=False
     # env = NoopResetEnv(env, noop_max=30) # We already set random initialisation in .reset()
-    env = MaxAndSkipEnv(env, skip=skip) # TODO - WTF
+    # env = MaxAndSkipEnv(env, skip=skip) # TODO - WTF
 
     if max_episode_steps is not None:
         env = TimeLimit(env, max_episode_steps=max_episode_steps)
