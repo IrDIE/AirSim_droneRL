@@ -18,16 +18,16 @@ warnings.filterwarnings('ignore')
 
 LOAD_FROM = None # './saved_weights/dddqn_fixed/no_per/'
 GAMMA = 0.99 # DISCOUNT RATE
-BATCH_SIZE = 12#64 # 128 #32 # FROM REPLAY BUFFER
+BATCH_SIZE = 64 # 128 #32 # FROM REPLAY BUFFER
 BUFFER_SIZE = 50_000
-MIN_REPLAY_SIZE = 15 #5_000
+MIN_REPLAY_SIZE = 5_000
 EPSILON_START = 0.75 # E GREEDY POLICY
 EPSILON_END = 0.05
 EPSILON_DECAY = 20_000
 LR = 1e-4
 NUM_ENVS = 1
 TARGET_UPDATE_FREQ = 1_000 // NUM_ENVS
-LOGGING_INTERVAL =50
+LOGGING_INTERVAL = 500
 SAVE_WEIGHTS = './saved_weights/dddqn_fixed/no_per1/'
 LOGG_TB_DIR = "./logs/dddqn_fixed/no_per1/"
 
@@ -209,8 +209,9 @@ def training_dddqn(env, logg_tb, save_path, load_ckpt=None):
 
     # init replay buffer before training
     global_step = 0
+    states = env.reset()
     while global_step < MIN_REPLAY_SIZE:
-        states = env.reset()
+
         done = False
         global_step += 1
         if global_step % LOGGING_INTERVAL == 0: logger.info(f'COLLECTING REPLAY BUFFER at step = {global_step}')
@@ -240,10 +241,11 @@ def training_dddqn(env, logg_tb, save_path, load_ckpt=None):
     global_step = 0
     online_net_sum_loss_episodes, critic_sum_loss_episodes, sum_reward_episodes, tds_avg = 0, 0, 0, 0
     time_limit = 600
+    states = env.reset()
 
     for episode in itertools.count():
         actor_sum_loss_per_ep, critic_sum_loss_per_ep, sum_reward_per_episode, tds_per_ep = 0, 0, 0, 0
-        states = env.reset()
+
         done = False
         step_epoch = 0
         # select action
@@ -295,7 +297,7 @@ def training_dddqn(env, logg_tb, save_path, load_ckpt=None):
             if global_step % TARGET_UPDATE_FREQ:
                 target_net.load_state_dict(online_net.state_dict())
 
-
+        logger.info(f'Training logging......')
         sum_reward_episodes += sum_reward_per_episode
         tb_summary.add_scalar('sum_reward_per_episode', sum_reward_per_episode, global_step=episode)
         online_net_sum_loss_episodes += actor_sum_loss_per_ep
