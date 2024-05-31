@@ -30,6 +30,7 @@ class TransposeImageObs(gym.ObservationWrapper):
 
 class BatchedPytorchFrameStack(VecEnvWrapper):
     def __init__(self, env, k):
+
         """Stack k last frames.
         Returns lazy array, which is much more memory efficient.
         See Also
@@ -39,11 +40,11 @@ class BatchedPytorchFrameStack(VecEnvWrapper):
         super().__init__(env)
         self.k = k
         self.batch_stacks = [deque([], maxlen=k) for _ in range(env.num_envs)]
+
         shp = env.observation_space.shape
-        # logger.info(f'shp[1:] = {shp[1:]}')
-        # logger.info(f'shp[0] = {shp[0]}')
-        # logger.info(f'shape=((shp[0] * k,) + shp[1:]) = { (shp[0] * k,) + shp[1:] }')
-        self.observation_space = gym.spaces.Box(low=0., high=1., shape=((shp[0] * k,) + shp[1:]),
+        # logger.info(f'init BatchedPytorchFrameStack with shape = {shp}, inited-{(shp[0] * k,) + shp[1:]}, refactored = {shp[:2] + (shp[2] * k,)}')
+
+        self.observation_space = gym.spaces.Box(low=0., high=1., shape=(shp[:2] + (shp[2] * k,)),
                                                 dtype=env.observation_space.dtype)
         self.env = env
 
@@ -58,18 +59,17 @@ class BatchedPytorchFrameStack(VecEnvWrapper):
         obses, reward, terminated, truncated, info = self.env.step_wait()
         for i, obs_frame in enumerate(obses):
             self.batch_stacks[i].append(obs_frame)
-
         ret_ob = self._get_ob()
         return ret_ob, reward,  terminated, truncated, info
 
     def _get_ob(self):
-        return [PytorchLazyFrames(list(batch_stack), axis=0) for batch_stack in self.batch_stacks]
+        return [PytorchLazyFrames(list(batch_stack), axis=2) for batch_stack in self.batch_stacks]
 
     def _transform_batched_frame(self, frame):
         return [f for f in frame]
 
 class PytorchLazyFrames(object):
-    def __init__(self, frames, axis=0):
+    def __init__(self, frames, axis=2):
         """This object ensures that common frames between the observations are only stored once.
         It exists purely to optimize memory usage which can be huge for DQN's 1M frames replay
         buffers.
@@ -85,3 +85,6 @@ class PytorchLazyFrames(object):
     def get_frames(self):
         """Get Numpy representation without dumping the frames."""
         return np.concatenate(self._frames, axis=self.axis)
+
+
+

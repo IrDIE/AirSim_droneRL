@@ -33,7 +33,7 @@ RESCALE_N = 0.35
 RANDOM_SEED = 42
 COLLISION_REWARD = -1
 clock_speed = 2 # in cfg
-ACTION_DURATION = 0.5 / clock_speed
+ACTION_DURATION = 0.7 / clock_speed
 RESIZE_OBSERVATION = (128,128) #(64, 64)
 NUM_ENVS = 1
 
@@ -91,7 +91,6 @@ class AirSimGym_env(Env):
 
         observation = self.get_observation()
         info = self._get_info()
-
         reward, terminated, truncated = self.compute_reward_maze()  # TODO - define rewarn calculation function
         # logger.info(f'action = {action}')
 
@@ -116,8 +115,6 @@ class AirSimGym_env(Env):
         quad_vel=kinematic.linear_velocity
         vel = np.array([quad_vel.x_val, quad_vel.y_val, quad_vel.z_val], dtype=np.float32)
         speed_current = np.linalg.norm(vel)
-
-
 
         # reward = float(vel[1])
         if position.y_val > levels[self.level]:
@@ -147,10 +144,10 @@ class AirSimGym_env(Env):
         self.client.moveByAngleZAsync(0, 0, z, yaw_rad, ACTION_DURATION)
     def move_forward(self):
         yaw_deg, yaw_rad = self.get_yaw()
-        z = self.client.simGetGroundTruthKinematics().position.z_val
+        # z = self.client.simGetGroundTruthKinematics().position.z_val
         # need rad
-        vx = math.cos(yaw_rad) * 0.35
-        vy = math.sin(yaw_rad) * 0.35
+        vx = math.cos(yaw_rad) * 0.5
+        vy = math.sin(yaw_rad) * 0.5
         #logger.info(f'vx={vx}, vy={vy}')
         self.client.moveByVelocityAsync(vx , vy , 0, ACTION_DURATION, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False))#.join()
     def rotate_left(self):
@@ -216,7 +213,6 @@ class AirSimGym_env(Env):
         self.client.simPause(True)
         if self.get_vel_obs :
             vel = self._get_info(get_kinematic=True)
-
             observation = [observation, vel]
         return observation, reward, terminated, truncated, info
 
@@ -415,7 +411,7 @@ def connect_drone(ip_address='127.0.0.5', num_agents=1, client=[]):
     return client
 
 
-def connect_exe_env(exe_path, name, documents_path, stack_last_k,get_vel_obs, height_airsim_restart_positions,action_type, env_type='outdoor', max_episode_steps=100 ):
+def connect_exe_env(exe_path, name, documents_path, stack_last_k, height_airsim_restart_positions,action_type, env_type='outdoor',get_vel_obs=False, max_episode_steps=100 ):
     cfg = read_cfg(config_filename='./configs/config.cfg', verbose=False)
     cfg.num_agents = 1
     restart_positions, airsim_positions_raw, done_xy = get_airsim_position(name=name)
@@ -430,15 +426,18 @@ def connect_exe_env(exe_path, name, documents_path, stack_last_k,get_vel_obs, he
     if get_vel_obs:
         logger.info(f'return ')
         return env_airsim, env_process
-
-    make_env = lambda: Monitor(make_airsim_deepmind(env_airsim, max_episode_steps=max_episode_steps),
-                               allow_early_resets=True)
-    vec_env = DummyVecEnv([make_env for _ in range(NUM_ENVS)])
+    #
+    # make_env = lambda: Monitor(make_airsim_deepmind(env_airsim, max_episode_steps=max_episode_steps),
+    #                            allow_early_resets=True)
+    # vec_env = DummyVecEnv([make_env for _ in range(NUM_ENVS)])
+    vec_env = DummyVecEnv(env_airsim)
 
 
     # set batched environment
 
     env = BatchedPytorchFrameStack(vec_env, k=stack_last_k) # stack_last_k = 4
+
+    # env = BatchedPytorchFrameStack(env_airsim, k=stack_last_k)  # stack_last_k = 4
     return env, env_process
 
 

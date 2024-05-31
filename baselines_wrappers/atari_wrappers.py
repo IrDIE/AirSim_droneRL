@@ -110,7 +110,8 @@ class MaxAndSkipEnv(gym.Wrapper):
         terminated = None
         truncated = None
         for i in range(self._skip):
-            obs, reward, terminated, truncated, info = self.env.step(action) #observation, reward, terminated, truncated, info
+            obs, reward, terminated, truncated, info = self.env.step(action)
+            #observation, reward, terminated, truncated, info
             #logger.info(f'max and skip obs = {obs.shape}')
             if i == self._skip - 2: self._obs_buffer[0] = obs
             if i == self._skip - 1: self._obs_buffer[1] = obs

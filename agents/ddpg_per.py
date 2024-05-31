@@ -554,7 +554,7 @@ def training_ddpg_per(env, logg_tb, save_path, seq_size):
 
     logger.info(f'---------- device  =  {device} ')
     tb_summary = SummaryWriter(logg_tb)
-    logg_hyperparams(tb_summary, {"bug" : "fix not doing reset after done in min_replay before training"})
+    logg_hyperparams(tb_summary )
     rddpg_agent = DDPG_Agent(save_path=save_path, tau=TAU, input_ch=1, gamma=GAMMA, memory_size=BUFFER_SIZE, \
                              batch_size = BATCH_SIZE, img_hw = IMG_HW, seq_size = seq_size, action_size=ACTION_SIZE,\
                              min_max_actions = CLIP_ACTION , velocity_size = VELOCITY_SIZE, load_ckpt = LOAD_FROM).to(device)
