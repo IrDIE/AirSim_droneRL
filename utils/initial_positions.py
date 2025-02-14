@@ -1,125 +1,80 @@
-import numpy as np
-import airsim
-
 # Define the initial positions of teh environments being used.
-# The module name is the name of the environment to be used in the config file
-# and should be same as the .exe file (and folder) within the unreal_envs folder
 
-def indoor_meta():
-    orig_ip = [     #x, y, theta in DEGREES
-
-                    # One - Pyramid
-                    [-21593, -1563, -45],  # Player Start
-                    [-22059, -2617, -45],
-                    [-22800, -3489, 90],
-
-                    # Two - FrogEyes
-                    [-15744, -1679, 0],
-                    [-15539, -3043, 180],
-                    [-13792, -3371, 90],
-
-                    # Three - UpDown
-                    [-11221, -3171, 180],
-                    [-9962, -3193, 0],
-                    [-7464, -4558, 90],
-
-                    # Four - Long
-                    [-649, -4287, 180],  # Player Start
-                    [-4224, -2601, 180],
-                    [1180, -2153, -90],
-
-                    # Five - VanLeer
-                    [6400, -4731, 90],  # Player Start
-                    [5992, -2736, 180],
-                    [8143, -2835, -90],
-
-                    # Six - Complex_Indoor
-                    [11320, -2948, 0],
-                    [12546, -3415, -180],
-                    [10809, -2106, 0],
-
-                    # Seven - Techno
-                    [19081, -8867, 0],
-                    [17348, -3864, -120],
-                    [20895, -4757, 30],
-
-                    # Eight - GT
-                    [26042, -4336, 180],
-                    [26668, -3070, 0],
-                    [27873, -2792, -135]
-
-
-
-                ]# x, y, theta
-    level_name = [
-                    'Pyramid1', 'Pyramid2', 'Pyramid3',
-                    'FrogEyes1', 'FrogEyes2', 'FrogEyes3',
-                    'UpDown1', 'UpDown2', 'UpDown3',
-                    'Long1', 'Long2', 'Long3',
-                    'VanLeer1', 'VanLeer2', 'VanLeer3',
-                    'ComplexIndoor1', 'ComplexIndoor2', 'ComplexIndoor3',
-                    'Techno1', 'Techno2', 'Techno3',
-                    'GT1', 'GT2', 'GT3',
-                ]
-    crash_threshold = 0.07
-    return orig_ip, level_name, crash_threshold
-
-
-# Train complex indoor initial positions
-def indoor_complex():
-    # The environment can be downloaded from
-    # https://drive.google.com/drive/u/2/folders/1u5teth6l4JW2IXAkZAg1CbDGR6zE-v6Z
-    orig_ip = [
-        [-195, 812, 0],  # Player start
-        [-1018, 216, -50],
-        [-77, -118, 180],
-        [800, -553, 190]
-    ]
-    level_name = ['Complex1', 'Complex2', 'Complex3', 'Complex4']
-    crash_threshold = 0.07
-    return orig_ip, level_name, crash_threshold
-
-# Test condo indoor initial positions
-
-
-def outdoor_courtyard(get_far_distance = False):
-
-    # coordinates for .reset() , Format: [x coord, y coord, yaw degrees] in picture coordinates that can be directly be passed to airsim Pose class
-    orig_ip = [
-        [0, 0, 0],  # same as simulation starts
-        [-0.57, 16, 90],
-        [4.83, 15.66, 0],
-        [22.33, 14.37, -90],
-        [26.36,-10.5, 135],
-        [-11.97, -8.53, 0]
-    ]
-    done_xy = [(-23,37),(-32,34)] # min_x, max_x min_y, max_y
-    #crash_threshold = 0.07
-    return orig_ip, done_xy
 
 def indoor_maze_easy():
     orig_ip = [
-        [0, 0, 90],  # same as simulation starts
-
+        [0, 1.2, 90],  # same as simulation starts
     ]
-    done_xy = [(-5,5),(-7,60)] # min_x, max_x min_y, max_y
+    done_xy = [(-5, 5), (-5, 60)]  # min_x, max_x min_y, max_y
     # crash_threshold = 0.07
     return orig_ip, done_xy
 
 
+def airsim_nh():
+    airsim_positions_raw = [0, 0, 0, 0]  # env configuration: x y z yaw
+    # z range [-13, -0.14]
+    corner_points = [10, 6, 7, 8, 9]
+    points = {
+        0: [0.0, 0.0, -2.7913894653320312],
+        1: [79.53179931640625, 0.09467680007219315, -3.1866157054901123],
+        2: [90.3975601196289, 128.4595184326172, -2.099141836166382],
+        3: [163.23678588867188, -95.09355163574219, -2.781057357788086],
+        4: [44.59992980957031, 4.478905200958252, -4.058981418609619],
+        5: [-127.434, 2.247, -1],
+        6: [-275.9156494140625, -45.22773361206055, -2.370555877685547],
+        7: [-97.69298553466797, -210.5750274658203, -5.855777740478516],
+        8: [-271.3263854980469, -66.843017578125, -4.589820861816406],
+        9: [-194.64381408691406, 222.52703857421875, -5.27610778808594],
+        10: [214.8181610107422, 3.849276981782168e-05, -4.945945739746094],
+    }
+
+    starts_goals = {k: corner_points for k in range(5)}
+    done_xy = [
+        (-200, 200),
+        (-200, 200),
+        (-13, -0.99),
+    ]  # (min_x, max_x), (min_y, max_y), (min_z, max_z)
+    return points, starts_goals, airsim_positions_raw, done_xy
 
 
+def airsim_building99():
+    airsim_positions_raw = [0, 0, 0, 0]  # env configuration: x y z yaw
+    points = {
+        0: [0, 0, -2.1],
+        1: [-0.001, -0.001, -5.478],
+        2: [-8.7, -0.708, -2.942],
+        3: [0.0, 0.0, -1.9280849695205688],
+        4: [-0.2992955446243286, -10.354095458984375, -1.8638588190078735],
+        5: [3.167640209197998, -9.537789344787598, -1.0695282220840454],
+        6: [1.9178581237792969, -9.053359985351562, -5.935787677764893],
+        7: [0.6641343832015991, -17.466333389282227, -5.8872456550598145],
+        8: [0.6641343832015991, -17.466333389282227, -8.212793350219727],
+        9: [-6.478750228881836, -8.228304862976074, -4.444817543029785],
+        10: [-8.522492408752441, -6.217288970947266, -6.610441207885742],
+        11: [-8.522492408752441, -6.217288017272949, -1.1938992738723755],
+        12: [-0.40424588322639465, -4.799551486968994, -1.4023082256317139],
+        13: [18.7764949798584, -34.214439392089844, -0.16691210865974426],
+        14: [5.349249839782715, -40.8018913269043, -0.8922742009162903],
+        # corner points -- far destinations
+        15: [16.750661849975586, 1.9920252561569214, -4.356666088104248],
+        16: [-18.82586669921875, -6.455900192260742, -0.56968754529953],
+        17: [-1.1901984214782715, 10.412763595581055, -1.0810915231704712],
+        18: [8.332898139953613, -41.028167724609375, -0.6468393206596375],
+    }  # xyz
+    # z range [-11, 0.5]
+    corner_points = [15, 16, 17, 18]
+    starts_goals = {k: corner_points for k in range(15)}
+    done_xy = None  # (min_x, max_x), (min_y, max_y), (min_z, max_z)
+    return points, starts_goals, airsim_positions_raw, done_xy
 
 
-
-def get_airsim_position(name):
+def get_airsim_position(name: str):
     """
     :return:
         airsim_positions_raw - need for initial json generation and correct start of exe environment
         airsim_positions - list of initial positions on map of environment (see retrive_initial_position.py)
 
     """
-    airsim_positions_raw = [0, 0, 0, 0, 0, 0]
-    name = name+'()'
-    initial_positions, done_xy = eval(name)
-    return initial_positions, airsim_positions_raw, done_xy
+    print(name)
+    name = name + "()"
+    return eval(name)
