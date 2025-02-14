@@ -12,3 +12,4 @@ psutil==5.9.2
 torch>=2.0.1
 gymnasium>=0.29.1
 tensorboard==2.10.1
+keyboard
