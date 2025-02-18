@@ -105,28 +105,21 @@ class AirSimGym_env(Env):
 
         """
         v_xy_sp = action[0] + 1
-        # * 2.5  # * 0.7
+        v_z_sp = float(action[1])
+
         yaw_rate_sp = action[-1]
-        v_z_sp = float(action[1] * 0.2)
 
         _, yaw_rad = self.get_yaw()
         self.yaw = yaw_rad
         self.yaw_sp = self.yaw + yaw_rate_sp
-        # print(f"yaw_sp={self.yaw_sp}")
 
         if self.yaw_sp > math.radians(180):
             self.yaw_sp -= math.pi * 2
         elif self.yaw_sp < math.radians(-180):
             self.yaw_sp += math.pi * 2
 
-        # print(f"math.cos(self.yaw_sp)={math.cos(self.yaw_sp)}")
-        # print(f"math.sin(self.yaw_sp)={math.sin(self.yaw_sp)}")
-
         vx_local_sp = v_xy_sp * math.cos(self.yaw_sp)
         vy_local_sp = v_xy_sp * math.sin(self.yaw_sp)
-
-        # print(f"vy_local_sp={vy_local_sp}")
-        # print(f"vy_local_sp={vy_local_sp}")
 
         return vx_local_sp, vy_local_sp, -v_z_sp, yaw_rate_sp
 
@@ -352,6 +345,65 @@ class AirSimGym_env(Env):
 
         return reward, terminated, truncated
 
+    def reward_outdoor_z(self):
+        truncated = False
+        terminated = False
+        out_of_env = False
+        # delta_d_coef = 50
+
+        collision_reward = -2
+        out_of_env_reward = -1
+
+        if_collision = self.client.simGetCollisionInfo().has_collided
+
+        if if_collision:
+            terminated = True
+            return collision_reward, terminated, truncated
+
+        kinematic = self.client.getMultirotorState().kinematics_estimated
+        position = kinematic.position
+
+        if self.done_xy is not None:
+            out_of_env = self.check_if_out_of_env(position=position)
+        truncated = False if not out_of_env else True
+        if out_of_env:
+            return out_of_env_reward, terminated, truncated
+
+        quad_vel = kinematic.linear_velocity
+        vel = np.array([quad_vel.x_val, quad_vel.y_val], dtype=np.float32)
+        speed_xy_current = np.linalg.norm(vel)
+
+        # dynamic distance
+        # current_distance_to_goal = self.get_distance_to_goal(position, self.goal_point)
+        # delta_d = self.last_distance_to_goal - current_distance_to_goal
+        # delta_d = delta_d * delta_d_coef / self.start_goal_dist
+        # self.last_distance_to_goal = current_distance_to_goal
+
+        # fast delta z reward
+        current_z = self.client.getMultirotorState().kinematics_estimated.position.z_val
+        delta_z = np.abs(self.last_z - current_z)
+        self.last_z = current_z
+        # logger.info(f'\ndelta_z = {delta_z}, z_current={current_z}')
+        delta_z_reward = 0
+        z_distance_reward = 0
+        if delta_z > 0.3:
+            delta_z_reward = -delta_z * 0.5
+
+        if current_z < -9:  # for NH environment
+            z_distance_reward = -0.1
+
+        # dist to obstackle
+        dist_obstackle = 1 - self.min_collision_dist
+        if dist_obstackle < 0.9:
+            dist_obstackle = 0
+
+        reward = 0.4 * speed_xy_current - 2 * dist_obstackle + delta_z_reward + z_distance_reward
+        logger.info(
+            f"\nspeed_xy_current={speed_xy_current}, dist_obstackle={dist_obstackle}"
+        )
+
+        return reward, terminated, truncated
+
     def reward_outdoor_1(self):
         truncated = False
         terminated = False
@@ -396,7 +448,7 @@ class AirSimGym_env(Env):
         if dist_obstackle < 0.9:
             dist_obstackle = 0
 
-        reward = delta_d + 0.4 * speed_xy_current - 2 * dist_obstackle
+        reward = delta_d * 0.1 + 0.4 * speed_xy_current - 2 * dist_obstackle
         # logger.info(
         #     f"\nReward components: delta_d={delta_d},speed_xy_current={speed_xy_current}, dist_obstackle={dist_obstackle}\nreward={reward}\n\n"
         # )
@@ -443,7 +495,7 @@ class AirSimGym_env(Env):
         if self.env_type == "indoor":
             return self.reward_indoor()
         elif self.env_type == "outdoor":
-            return self.reward_outdoor_1()
+            return self.reward_outdoor_z()
         else:
             return NotImplementedError()
 
@@ -471,8 +523,12 @@ class AirSimGym_env(Env):
         self.start_goal_dist = get_distance_to_goal_3d(
             self.start_point, self.goal_point
         )
+
         self.last_distance_to_goal = get_distance_to_goal_3d(
             self.start_point, self.goal_point
+        )
+        self.last_z = (
+            self.client.getMultirotorState().kinematics_estimated.position.z_val
         )
 
         x, y, reset_height = self.points[start_point_id]

@@ -790,6 +790,7 @@ def training_ddpg_per(env: AirSimGym_env, cfg_agent):
     hidden_gru = cfg_agent.getint("train", "hidden_gru")
     gamma = cfg_agent.getfloat("train", "gamma")
     batch = cfg_agent.getint("train", "batch")
+    gradient_steps = cfg_agent.getint("train", "gradient_steps")
     lr_actor = cfg_agent.getfloat("train", "lr_actor")
     lr_critic = cfg_agent.getfloat("train", "lr_critic")
     min_replay_size = cfg_agent.getint("train", "min_replay_size")
@@ -909,16 +910,21 @@ def training_ddpg_per(env: AirSimGym_env, cfg_agent):
         state = [history, vel]
         done = False
         step_epoch = 0
+        logger.info(f'episode={episode}')
         while not done and step_epoch < max_steps_per_episode:
             try:
-
+                if global_step % train_rate == 0:
+                    for grad_step in range(gradient_steps):
+                        # do train (opt.step / backward) and update target networks
+                        # env.client.simPause(True)
+                        critic_loss, actor_loss = rddpg_agent.train()
+                        actor_sum_loss_per_ep += actor_loss.item()
+                        critic_sum_loss_per_ep += critic_loss.item()
+                        if grad_step % 50 == 0:
+                            logger.info(f'grad_step={grad_step}')
+                        # env.client.simPause(False)
                 step_epoch += 1
                 global_step += 1
-                if episode % train_rate == 0:
-                    # do train
-                    critic_loss, actor_loss = rddpg_agent.train()
-                    actor_sum_loss_per_ep += actor_loss.item()
-                    critic_sum_loss_per_ep += critic_loss.item()
 
                 # get action from state
                 state_tensor = transform_observation(state)
@@ -995,7 +1001,6 @@ def training_ddpg_per(env: AirSimGym_env, cfg_agent):
         tb_summary.add_scalar(
             "avg_critic_loss_per_episode", critic_loss_per_episode, global_step=episode
         )
-
         tb_summary.add_scalar(
             "actor_loss_per_episode", actor_sum_loss_per_ep, global_step=episode
         )

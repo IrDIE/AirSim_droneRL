@@ -29,9 +29,6 @@ def main():
             documents_path = documents_path,
         )
 
-    # train_DDPG_per(logg_tb = LOGG_TB_DIR, save_path = SAVE_WEIGHTS, seq_size = 5,  height_airsim_restart_positions = [-0.8339])
-    # main_dddqn()
-    # inference(height_airsim_restart_positions=[-0.8339], seq_size = 5)  # main()
 
 
 if __name__ == "__main__":
