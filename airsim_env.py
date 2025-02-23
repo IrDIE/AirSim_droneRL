@@ -345,13 +345,12 @@ class AirSimGym_env(Env):
 
         return reward, terminated, truncated
 
-    def reward_outdoor_z(self):
+    def reward_outdoor_z(self):  # ddpg-FixRates-z3
         truncated = False
         terminated = False
         out_of_env = False
-        # delta_d_coef = 50
 
-        collision_reward = -2
+        collision_reward = -3
         out_of_env_reward = -1
 
         if_collision = self.client.simGetCollisionInfo().has_collided
@@ -373,14 +372,14 @@ class AirSimGym_env(Env):
         vel = np.array([quad_vel.x_val, quad_vel.y_val], dtype=np.float32)
         speed_xy_current = np.linalg.norm(vel)
 
-        # dynamic distance
+        # ------ dynamic distance
         # current_distance_to_goal = self.get_distance_to_goal(position, self.goal_point)
         # delta_d = self.last_distance_to_goal - current_distance_to_goal
         # delta_d = delta_d * delta_d_coef / self.start_goal_dist
         # self.last_distance_to_goal = current_distance_to_goal
 
-        # fast delta z reward
-        current_z = self.client.getMultirotorState().kinematics_estimated.position.z_val
+        # ------ fast delta z reward
+        current_z = position.z_val
         delta_z = np.abs(self.last_z - current_z)
         self.last_z = current_z
         # logger.info(f'\ndelta_z = {delta_z}, z_current={current_z}')
@@ -392,16 +391,87 @@ class AirSimGym_env(Env):
         if current_z < -9:  # for NH environment
             z_distance_reward = -0.1
 
-        # dist to obstackle
+        # ------ dist to obstackle
         dist_obstackle = 1 - self.min_collision_dist
         if dist_obstackle < 0.9:
             dist_obstackle = 0
 
-        reward = 0.4 * speed_xy_current - 2 * dist_obstackle + delta_z_reward + z_distance_reward
-        logger.info(
-            f"\nspeed_xy_current={speed_xy_current}, dist_obstackle={dist_obstackle}"
+        reward = (
+            0.4 * speed_xy_current
+            - 2 * dist_obstackle
+            + delta_z_reward
+            + z_distance_reward
         )
+        # logger.info(
+        #     f"\nspeed_xy_current={speed_xy_current}, dist_obstackle={dist_obstackle}"
+        # )
 
+        return reward, terminated, truncated
+
+    def reward_outdoor_z2(self):  
+        # ddpg-FixRates-z4
+        # test
+        truncated = False
+        terminated = False
+        out_of_env = False
+
+        collision_reward = -3
+        out_of_env_reward = -2
+
+        if_collision = self.client.simGetCollisionInfo().has_collided
+
+        if if_collision:
+            terminated = True
+            return collision_reward, terminated, truncated
+
+        kinematic = self.client.getMultirotorState().kinematics_estimated
+        position = kinematic.position
+
+        if self.done_xy is not None:
+            out_of_env = self.check_if_out_of_env(position=position)
+        truncated = False if not out_of_env else True
+        if out_of_env:
+            return out_of_env_reward, terminated, truncated
+
+        quad_vel = kinematic.linear_velocity
+        vel = np.array([quad_vel.x_val, quad_vel.y_val], dtype=np.float32)
+        speed_xy_current = np.linalg.norm(vel)
+
+        # ------ dynamic distance
+        delta_d_coef = 50
+        current_distance_to_goal = self.get_distance_to_goal(position, self.goal_point)
+        delta_d = self.last_distance_to_goal - current_distance_to_goal
+        delta_d = delta_d * delta_d_coef / self.start_goal_dist
+        self.last_distance_to_goal = current_distance_to_goal
+        # ------ fast delta z reward
+        current_z = position.z_val
+        delta_z = self.last_z - current_z
+        self.last_z = current_z
+        delta_z_reward = 0
+        z_distance_reward = 0
+        if delta_z < -0.3:
+            delta_z_reward = delta_z * 0.4
+        if current_z < -7:  # for NH environment
+            z_distance_reward = -0.1
+
+        # ------ dist to obstackle
+        dist_obstackle = 1 - self.min_collision_dist
+        if dist_obstackle < 0.9:
+            dist_obstackle = 0
+
+        reward = (
+            0.2 * delta_d
+            + 0.3 * speed_xy_current
+            - 2 * dist_obstackle
+            + delta_z_reward
+            + z_distance_reward
+        )
+        # logger.info(
+        #     f"\ndelta_d={delta_d}, speed_xy_current={speed_xy_current}, dist_obstackle={dist_obstackle}, delta_z_reward={delta_z_reward}, z_distance_reward={z_distance_reward}"
+        # )
+        # logger.info(
+        #     f"\n\nreward={reward}, "
+        # )
         return reward, terminated, truncated
 
     def reward_outdoor_1(self):
@@ -495,7 +565,7 @@ class AirSimGym_env(Env):
         if self.env_type == "indoor":
             return self.reward_indoor()
         elif self.env_type == "outdoor":
-            return self.reward_outdoor_z()
+            return self.reward_outdoor_z2()
         else:
             return NotImplementedError()
 
