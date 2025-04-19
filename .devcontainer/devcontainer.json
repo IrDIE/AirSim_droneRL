@@ -1,0 +1,28 @@
+{
+    "name": "torch_test",
+
+	"initializeCommand" : "docker pull nvidia/cuda:12.6.2-cudnn-runtime-ubuntu22.04",
+    "build": {
+        "dockerfile": "Dockerfile.dev",
+        "context": ".."
+    },
+    // "remoteUser": "appuser",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "ms-python.black-formatter"
+            ]
+        }
+    },
+    "mounts": [
+        "source=C:\\Users\\irady\\GitHub\\Diploma\\AirSim_droneRL\\unreal_envs,target=/home/unreal_envs,type=bind",
+],
+    "containerEnv": {
+        "DISPLAY": "unix:0"
+    },
+    "remoteEnv" : {"PLATFORM" : "gpu"},
+    "runArgs": ["--gpus", "all", "--net=host", "--privileged"], // ,  "-p=4151:4151" "--net=host",
+    "postStartCommand" : ["/bin/sh","setup/setup-gpu.sh"] //  ["/bin/sh","-c", "pwd > log_pwd.txt"]
+}
