@@ -51,6 +51,9 @@ This repository uses a **Docker-based setup** for training a reinforcement learn
 - **Development Environment**: Use the `.devcontainer` feature in **VS Code** to run the development container (configured with `--net=host`).
   - More info on dev containers: [VS Code Dev Containers Documentation](https://code.visualstudio.com/docs/devcontainers/containers)
 
+
+<img src="https://github.com/IrDIE/AirSim_droneRL/blob/itmo_branch/readme_pictures/docker.png" width="1720" height="624"/> 
+
 ---
 
 #### 1. Connecting to AirSim from the Container
