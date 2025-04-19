@@ -1,8 +1,24 @@
-# Apply Reinforcement Learning in AirSim simulation (with drone) :star:
+# Reinforcement Learning in AirSim simulation (Autonomous UAV Navigation) :star:
 
-This repo contains several training alghorithms for trainig drone avoid obstackles in AirSim simulation
+This repository contains several deep reinforcement learning (DRL) algorithms for training a drone to avoid obstacles in the AirSim simulation.
+
+You can experiment with your own agents and rewards!
+
+AirSim environment are wrapped in Gym environment so we can interact with it jist like with any Gym environment.
 
 ### What is AirSim?
+
+<details>
+  <summary>Why use AirSim?</summary>
+
+  AirSim have ArduPilot and ROS support - what can be very helpful if you gonna do inference in real-world
+
+  <img src="https://github.com/IrDIE/AirSim_droneRL/blob/main/readme_pictures/why_airsim.png" width="705" height="408"/>  
+  
+  source - https://imrclab.github.io/workshop-uav-sims-icra2023/papers/RS4UAVs_paper_10.pdf
+
+</details>
+
 official repo : 
 
 https://github.com/microsoft/AirSim
@@ -17,34 +33,65 @@ AirSim good at simulation of drone physic and render of environment good enough:
 
 
 
-
-AirSim environment are wrapped in Gym environment (check `airsim_env.py`) so we can interact with it jist like with any Gym environment.
-
-* To launch environment you should have .exe file with rendered UnrealEngine environment (and UE4 installed as well). 
+* To launch environment you should have .exe (if you are on Windows) file with rendered UnrealEngine environment (and UE4 installed as well). 
   * You can find zipped .exe environments here - https://github.com/microsoft/AirSim/releases
   * Also setup instruction to make AirSim API work can be found in official AirSim repo
 
+## Docker setup instructions:
+
+This repository uses a **Docker-based setup** for training a reinforcement learning (RL) agent in Ubuntu container, while running the **Unreal Engine 4 (UE4)** simulation on the host machine.
+
+> These instructions are based on a **Windows host**, but can be adapted for **Linux**.
+
+---
+
+#### 0. Strat here
+
+- **Unreal Engine 4**: Run the AirSim environment (`.exe`) directly on the **host** machine.
+- **Development Environment**: Use the `.devcontainer` feature in **VS Code** to run the development container (configured with `--net=host`).
+  - More info on dev containers: [VS Code Dev Containers Documentation](https://code.visualstudio.com/docs/devcontainers/containers)
+
+---
+
+#### 1. Connecting to AirSim from the Container
+
 <details>
-  <summary>Why use AirSim?</summary>
+  <summary> <-- press spoiler</summary>
 
+To connect from the **Docker container** to the **AirSim simulation** running on the host:
 
-  AirSim have ArduPilot and ROS support - what can be very helpful if you gonna do inference in real-world
+1. **AirSim Server Info**
+   - Default **port**: `41451` (hardcoded in the `airsim` Python library — no need to manually configure it).
+   - You’ll need the **host IP address** that the AirSim server is running on.
 
-  <img src="https://github.com/IrDIE/AirSim_droneRL/blob/main/readme_pictures/why_airsim.png" width="705" height="408"/>  
-  
-
-  source - https://imrclab.github.io/workshop-uav-sims-icra2023/papers/RS4UAVs_paper_10.pdf
-
+2. **Networking Considerations (Windows-specific)**
+   - Docker on Windows runs inside **WSL**, not natively on Windows.
+   - To enable proper networking between **Windows → WSL → Docker**, you need to configure WSL as follows:
 
 </details>
 
-### How use this repo?
- 1. ```git clone ```
-2. Install UE4 for AirSim ( all setup can be found here https://github.com/microsoft/AirSim )
-2. ```pip install requirements.txt``` 
-2. Download and unzip environment -
-2. Currently available only DQN algorithm (for **outdoor_courtyard** environment with discrete action space)
-   * All logic for reward calculation, reset, step are in `airsim_env.pt`
-4. . Check out `agents.dqn.py` file, set your hyperparameters. 
-3. Go to `main.py` and run `train_outroor_DQN` function
+---
 
+#### 2. WSL Networking Configuration
+
+<details>
+  <summary> <-- press spoiler</summary>
+
+1. Locate your `.wslconfig` file (typically at `C:\Users\<your-username>\.wslconfig`) and add the following line:
+
+   ```ini
+   networkingMode=mirrored
+   ```
+2. Open the project in VS Code using “Open Folder in Container”.
+
+3. Inside the container, run the connection test:
+    ```ini
+    python3 ./test_connection_docker.py
+    ```
+
+    ✅ Success!
+    If the script connects successfully — You're all set! 🎉 
+
+    If not, please open an issue and include details about your network setup so we can help troubleshoot.
+
+</details>

@@ -40,7 +40,7 @@ def airsim_nh():
 
 def airsim_building99():
     airsim_positions_raw = [0, 0, 0, 0]  # env configuration: x y z yaw
-    points = {
+    points = { # coordinated mannualy selected
         0: [0, 0, -2.1],
         1: [-0.001, -0.001, -5.478],
         2: [-8.7, -0.708, -2.942],
@@ -65,7 +65,12 @@ def airsim_building99():
     # z range [-11, 0.5]
     corner_points = [15, 16, 17, 18]
     starts_goals = {k: corner_points for k in range(15)}
-    done_xy = None  # (min_x, max_x), (min_y, max_y), (min_z, max_z)
+    done_xy = [
+        (-25, 25),
+        (-25, 25),
+        (-11, -0.6),
+    ] 
+     # (min_x, max_x), (min_y, max_y), (min_z, max_z)
     return points, starts_goals, airsim_positions_raw, done_xy
 
 

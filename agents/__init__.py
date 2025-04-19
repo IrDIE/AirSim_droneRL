@@ -1,10 +1,6 @@
-# from agents.dueling_double_dqn import train_DDDQN, infer_DDDQN
-# from agents.ddpg import train_DDPG, infer_DDPG
-
 from agents.dueling_double_dqn_PER import train_DDDQN_per, infer_DDDQN_per
 from agents.ddpg_per import train_DDPG_per, infer_DDPG_per
 from agents.ddpg_per import Actor
-
 
 def setup(cfg):
     return CFG_NAME_MAPPING[cfg]

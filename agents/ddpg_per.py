@@ -910,7 +910,7 @@ def training_ddpg_per(env: AirSimGym_env, cfg_agent):
         state = [history, vel]
         done = False
         step_epoch = 0
-        logger.info(f'episode={episode}')
+        logger.info(f"episode={episode}")
         while not done and step_epoch < max_steps_per_episode:
             try:
                 if global_step % train_rate == 0:
@@ -921,7 +921,7 @@ def training_ddpg_per(env: AirSimGym_env, cfg_agent):
                         actor_sum_loss_per_ep += actor_loss.item()
                         critic_sum_loss_per_ep += critic_loss.item()
                         if grad_step % 50 == 0:
-                            logger.info(f'grad_step={grad_step}')
+                            logger.info(f"grad_step={grad_step}")
                         # env.client.simPause(False)
                 step_epoch += 1
                 global_step += 1
@@ -1012,19 +1012,7 @@ def training_ddpg_per(env: AirSimGym_env, cfg_agent):
         )
 
 
-
 def train_DDPG_per(cfg_agent, exe_path, cfg_env_path, documents_path):
-    # env, env_process = connect_exe_env(
-    #     height_airsim_restart_positions=height_airsim_restart_positions,
-    #     get_vel_obs=True,  # [-0.8339]
-    #     env_type="indoor",
-    #     action_type="continuous",
-    #     max_episode_steps=100,
-    #     stack_last_k=1,
-    #     exe_path="./unreal_envs/easy_maze/Blocks.exe",
-    #     documents_path="../../../../../Documents",
-    #     name="indoor_maze_easy",
-    # )
     env, env_process = connect_exe_env(
         cfg_agent,
         exe_path,
@@ -1033,7 +1021,8 @@ def train_DDPG_per(cfg_agent, exe_path, cfg_env_path, documents_path):
     )
 
     res = training_ddpg_per(env, cfg_agent)
-    close_env(env_process)
+    if env_process is not None:
+        close_env(env_process)
     return res
 
 
@@ -1109,7 +1098,8 @@ def infer_DDPG_per(cfg_agent, exe_path, cfg_env_path, documents_path):
             done = terminated or truncated
             state = new_state
 
-    close_env(env_process)
+    if env_process is not None:
+        close_env(env_process)
 
 
 def chwck_noise():

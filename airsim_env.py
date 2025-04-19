@@ -21,10 +21,11 @@ import psutil
 from random import sample
 import cv2
 import math
+import os
 
+possible_host = os.environ.get('REAL_HOST_WSL', default = "127.0.0.1")
 RANDOM_SEED = 42
-COLLISION_REWARD = -2
-clock_speed = 2  # in cfg # TODO: read clock speed from cfg
+clock_speed = 2
 ACTION_DURATION = 1 / clock_speed
 
 
@@ -99,11 +100,6 @@ class AirSimGym_env(Env):
         return observation, reward, terminated, truncated, info
 
     def correct_continuous_action(self, action):
-        """
-        здесь после clip или нет
-        да
-
-        """
         v_xy_sp = action[0] + 1
         v_z_sp = float(action[1])
 
@@ -130,7 +126,6 @@ class AirSimGym_env(Env):
         """
 
         vx, vy, vz, yaw = self.correct_continuous_action(action)
-        # self.client.simPause(False)
         self.client.moveByVelocityAsync(
             vx,
             vy,
@@ -139,15 +134,6 @@ class AirSimGym_env(Env):
             drivetrain=airsim.DrivetrainType.MaxDegreeOfFreedom,
             yaw_mode=airsim.YawMode(is_rate=True, yaw_or_rate=math.degrees(yaw)),
         ).join()
-        # self.client.simPause(True)
-
-        # vx, vy, vz = action
-        # self.client.moveByVelocityAsync(
-        #     vx=float(vx),
-        #     vy=float(vy),
-        #     vz=float(vz),
-        #     duration=ACTION_DURATION,
-        # )
 
         # do one step in environment that corresponds to action
         observation = self.get_observation()
@@ -272,7 +258,7 @@ class AirSimGym_env(Env):
 
         if self.action_type == "discrete":
             self.client.simPause(True)
-        # self.client.simPause(True) # TODO: after continuus action too?
+        # self.client.simPause(True)
         if self.get_vel_obs:
             vel = self._get_info(get_kinematic=True)
             observation = [observation, vel]
@@ -280,8 +266,8 @@ class AirSimGym_env(Env):
 
     def check_if_out_of_env(self, position):
         assert (
-            self.env_type == "outdoor"
-        ), "\nonly for `outdoor` checking out of enf must be made!\n "
+            self.env_type == "outdoor" or self.env_type == "indoor"
+        ), "\nonly for `outdoor` | `indoor` checking out of enf must be made!\n "
 
         x_current, y_current, z_current = position.x_val, position.y_val, position.z_val
 
@@ -408,7 +394,7 @@ class AirSimGym_env(Env):
 
         return reward, terminated, truncated
 
-    def reward_outdoor_z2(self):  
+    def reward_outdoor_z2(self):
         # ddpg-FixRates-z4
         # test
         truncated = False
@@ -525,45 +511,56 @@ class AirSimGym_env(Env):
 
         return reward, terminated, truncated
 
-    def reward_indoor(self):
+    def reward_indoor_1(self):
         truncated = False
         terminated = False
         out_of_env = False
-        delta_d_coef = 30
+
+        collision_reward = -5
+        out_of_env_reward = -2
+
         if_collision = self.client.simGetCollisionInfo().has_collided
 
         if if_collision:
-            reward = COLLISION_REWARD
+            reward = collision_reward
             terminated = True
             return reward, terminated, truncated
 
         kinematic = self.client.getMultirotorState().kinematics_estimated
         position = kinematic.position
+        if self.done_xy is not None:
+            out_of_env = self.check_if_out_of_env(position=position)
+        truncated = False if not out_of_env else True
+        if out_of_env:
+            return out_of_env_reward, terminated, truncated
+
         quad_vel = kinematic.linear_velocity
         vel = np.array([quad_vel.x_val, quad_vel.y_val], dtype=np.float32)
         speed_xy_current = np.linalg.norm(vel)
 
-        if self.done_xy is not None:
-            out_of_env = self.check_if_out_of_env(position=position)
-        truncated = False if not out_of_env else True
+        # ------ fast delta z reward
+        current_z = position.z_val
+        delta_z = np.abs(self.last_z - current_z)
+        self.last_z = current_z
+        delta_z_reward = 0
+        if delta_z > 0.5:
+            delta_z_reward = -delta_z * 0.2
 
-        current_distance_to_goal = self.get_distance_to_goal(position, self.goal_point)
-        delta_d = self.last_distance_to_goal - current_distance_to_goal
-
-        delta_d = delta_d * delta_d_coef / self.start_goal_dist
-        self.last_distance_to_goal = current_distance_to_goal
-
+        # ------ dist to obstackle
         dist_obstackle = 1 - self.min_collision_dist
         if dist_obstackle < 0.9:
             dist_obstackle = 0
-        # logger.info(f"\nReward components: delta_d={delta_d}, 0.5*speed_xy_current={0.5*speed_xy_current}, dist_obstackle={dist_obstackle}")
-        reward = delta_d + speed_xy_current - dist_obstackle
+
+        reward = 0.3 * speed_xy_current - 2 * dist_obstackle + delta_z_reward
+        # logger.info(
+        #     f"\nspeed_xy_current={speed_xy_current},\n current_z={current_z} \ndelta_z={delta_z}, dist_obstackle = {dist_obstackle}"
+        # )
 
         return reward, terminated, truncated
 
     def compute_reward(self):
         if self.env_type == "indoor":
-            return self.reward_indoor()
+            return self.reward_indoor_1()
         elif self.env_type == "outdoor":
             return self.reward_outdoor_z2()
         else:
@@ -679,7 +676,6 @@ class AirSimGym_env(Env):
 
 def start_environment(exe_path):
     path = exe_path
-    # env_process = []
     env_process = subprocess.Popen(path)
     time.sleep(5)
     logger.info("Successfully loaded environment: " + exe_path)
@@ -689,6 +685,7 @@ def start_environment(exe_path):
 def connect_drone(ip_address="127.0.0.5", num_agents=1, client=[]):
     if client != []:
         client.reset()
+    logger.info(f"Start drone connection ... [{ip_address}]")
     client = airsim.MultirotorClient(ip=ip_address, timeout_value=10)
     client.confirmConnection()
     time.sleep(0.1)
@@ -718,12 +715,15 @@ def connect_exe_env(
     points, starts_goals, airsim_positions_raw, done_xy = get_airsim_position(
         cfg_env.get("environment", "name")
     )
-    generate_json(
-        cfg, initial_positions=airsim_positions_raw, documents_path=documents_path
-    )
+    env_process = None
+    if exe_path is not None:
+        generate_json(
+            cfg, initial_positions=airsim_positions_raw, documents_path=documents_path
+        )
+        env_process = start_environment(exe_path)
 
-    env_process = start_environment(exe_path)
-    client = connect_drone()  # first takeoff
+    client = connect_drone(possible_host)  # first takeoff
+    logger.info(f"Environment connected! <3 \n")
 
     env_airsim = AirSimGym_env(
         client,
@@ -818,20 +818,9 @@ def check_env_connection():
         cfg_env_path=cfg_env_path,  # "configs/env_conf/cfg_NH.ini" "configs/env_conf/cfg_building99.ini"
         cfg_agent=cfg_agent,  #
     )
-    # observation_as_depth=True (72, 128, 1) image_scaled: max=0.998039186000824 self.observation_shape = (72, 128, 1)
-    # observation_as_depth=False (72, 128, 3) image_scaled: max=0.984313725490196 self.observation_shape = (72, 128, 3)
 
     observation = env.reset()
-    # logger.info(f'env.observation_space.shape[2]={env.observation_space.shape}')
-
-    # stacked = np.stack([lazy_frames.get_frames() for lazy_frames in observation])
-    # logger.info(f'observation = {type(stacked)},{np.shape(stacked)}')
-    # logger.info(f'env.observation_space.shape[2]={env.observation_space.shape[2]}')
-
-    # -------------- testing step()
-
     time.sleep(4)
-
     for _ in range(10):
         observation, reward, terminated, truncated, info = env.step(1)
 

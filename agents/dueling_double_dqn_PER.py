@@ -73,7 +73,6 @@ class Double_Dueling_DQN_per(nn.Module):
         )
 
     def get_conv_net(self, env):
-        # logger.info(f'env.observation_space.shape = {env.observation_space.shape}')
         self.in_channels = list([env.observation_space.shape[2]])
         self.convNet_ = nn.Sequential(
             nn.Conv2d(self.in_channels[0], 32, kernel_size=(5, 5), stride=2),
@@ -536,7 +535,7 @@ def infer_DDDQN_per(
 
     # =============================================
 
-    close_env(env_process)
+    if env_process is not None: close_env(env_process)
 
 
 def train_DDDQN_per(
@@ -553,5 +552,5 @@ def train_DDDQN_per(
         documents_path,
     )
     res = training_dddqn_per(env, cfg_agent)
-    close_env(env_process)
+    if env_process is not None: close_env(env_process)
     return res
