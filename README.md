@@ -52,7 +52,7 @@ This repository uses a **Docker-based setup** for training a reinforcement learn
   - More info on dev containers: [VS Code Dev Containers Documentation](https://code.visualstudio.com/docs/devcontainers/containers)
 
 
-<img src="https://github.com/IrDIE/AirSim_droneRL/blob/itmo_branch/readme_pictures/docker.png" width="1720" height="624"/> 
+<img src="https://github.com/IrDIE/AirSim_droneRL/blob/itmo_branch/readme_pictures/docker.png" width="1720" height="424"/> 
 
 ---
 
