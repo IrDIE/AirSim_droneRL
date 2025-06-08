@@ -7,9 +7,11 @@ You can experiment with your own agents and rewards!
 AirSim environment are wrapped in Gym environment so we can interact with it jist like with any Gym environment.
 
 ##### In this repo:
-[What is AirSim?](#What-is-AirSim?)  
-[Docker setup instructions](#Docker-setup-instructions) 
-[Start training](#Start-training) 
+1. [What is AirSim?](#What-is-AirSim?)  
+
+2. [Docker setup instructions](#Docker-setup-instructions) 
+
+3. [Start training](#Start-training) 
 <a name="headers"/>
 
 
