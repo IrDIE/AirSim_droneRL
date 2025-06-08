@@ -111,7 +111,7 @@ To connect from the **Docker container** to the **AirSim simulation** running on
 
 ## Start training
 
-Currently repo contains code for training:
+Currently, the repository contains code for training:
 
   * Deep Deterministic Policy Gradient (with PER)
   * Dueling Double Deep Q Network (with PER)
