@@ -4,8 +4,8 @@ from loguru import logger
 
 
 def main():
-    documents_path = None #"../../../../../Documents"
-    exe_path = None 
+    documents_path = "../../../../../Documents" # "../../../../../Documents"
+    exe_path = "unreal_envs/AirSimNH/AirSimNH/WindowsNoEditor/AirSimNH.exe" 
     cfg_agent_path = "configs/agents_conf/ddpg_per.ini"
     cfg_env_path = "configs/env_conf/cfg_NH_ddpg_per.ini"
 
@@ -24,13 +24,12 @@ def main():
             documents_path=documents_path,
         )
     else:
-        pass
-        # train_fn(
-        #     cfg_agent,
-        #     exe_path=exe_path,
-        #     cfg_env_path=cfg_env_path,
-        #     documents_path=documents_path,
-        # )
+        train_fn(
+            cfg_agent,
+            exe_path=exe_path,
+            cfg_env_path=cfg_env_path,
+            documents_path=documents_path,
+        )
 
 
 if __name__ == "__main__":

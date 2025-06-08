@@ -6,6 +6,14 @@ You can experiment with your own agents and rewards!
 
 AirSim environment are wrapped in Gym environment so we can interact with it jist like with any Gym environment.
 
+##### In this repo:
+[What is AirSim?](#What-is-AirSim?)  
+[Docker setup instructions](#Docker-setup-instructions) 
+[Start training](#Start-training) 
+<a name="headers"/>
+
+
+
 ### What is AirSim?
 
 <details>
@@ -98,3 +106,17 @@ To connect from the **Docker container** to the **AirSim simulation** running on
     If not, please open an issue and include details about your network setup so we can help troubleshoot.
 
 </details>
+
+## Start training
+
+Currently repo contains code for training:
+
+  * Deep Deterministic Policy Gradient (with PER)
+  * Dueling Double Deep Q Network (with PER)
+
+To train an agent you need to set up config at `configs/agents_conf` and simply run:
+
+
+```python
+python3 main.py
+```
